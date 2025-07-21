@@ -2,13 +2,12 @@
 #include "aligator/python/fwd.hpp"
 
 #include "aligator/gar/dense-riccati.hpp"
-#include "aligator/gar/lqr-problem.hpp"
 
 namespace aligator::python {
 using namespace gar;
 using context::Scalar;
 using riccati_base_t = RiccatiSolverBase<Scalar>;
-using lqr_t = LqrProblemTpl<context::Scalar>;
+using lqr_t = LQRProblemTpl<context::Scalar>;
 
 void exposeDenseSolver() {
 

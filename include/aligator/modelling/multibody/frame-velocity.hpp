@@ -6,7 +6,6 @@
 #include <pinocchio/multibody/model.hpp>
 #include <pinocchio/multibody/data.hpp>
 #include <pinocchio/multibody/frame.hpp>
-#include "aligator/third-party/polymorphic_cxx14.h"
 
 namespace aligator {
 
@@ -21,14 +20,15 @@ public:
   ALIGATOR_UNARY_FUNCTION_INTERFACE(Scalar);
   using BaseData = typename Base::Data;
   using Model = pinocchio::ModelTpl<Scalar>;
-  using ManifoldPtr = xyz::polymorphic<ManifoldAbstractTpl<Scalar>>;
+  using ManifoldPtr = shared_ptr<ManifoldAbstractTpl<Scalar>>;
   using SE3 = pinocchio::SE3Tpl<Scalar>;
   using Motion = pinocchio::MotionTpl<Scalar>;
   using Data = FrameVelocityDataTpl<Scalar>;
 
-  Model pin_model_;
+  shared_ptr<Model> pin_model_;
 
-  FrameVelocityResidualTpl(const int ndx, const int nu, const Model &model,
+  FrameVelocityResidualTpl(const int ndx, const int nu,
+                           const shared_ptr<Model> &model,
                            const Motion &velocity,
                            const pinocchio::FrameIndex id,
                            const pinocchio::ReferenceFrame type);
@@ -62,6 +62,8 @@ struct FrameVelocityDataTpl : StageFunctionDataTpl<Scalar> {
 
 } // namespace aligator
 
+#include "aligator/modelling/multibody/frame-velocity.hxx"
+
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-#include "aligator/modelling/multibody/frame-velocity.txx"
+#include "./frame-velocity.txx"
 #endif

@@ -17,8 +17,7 @@ public:
   using Data = CentroidalCoMDataTpl<Scalar>;
 
   CentroidalCoMResidualTpl(const int ndx, const int nu, const Vector3s &p_ref)
-      : Base(ndx, nu, 3)
-      , p_ref_(p_ref) {}
+      : Base(ndx, nu, 3), p_ref_(p_ref) {}
 
   const Vector3s &getReference() const { return p_ref_; }
   void setReference(const Eigen::Ref<const Vector3s> &p_new) { p_ref_ = p_new; }
@@ -45,6 +44,8 @@ struct CentroidalCoMDataTpl : StageFunctionDataTpl<Scalar> {
 
 } // namespace aligator
 
+#include "aligator/modelling/centroidal/centroidal-translation.hxx"
+
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-#include "aligator/modelling/centroidal/centroidal-translation.txx"
+#include "./centroidal-translation.txx"
 #endif

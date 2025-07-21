@@ -27,14 +27,14 @@ struct IntegratorRK2Tpl : ExplicitIntegratorAbstractTpl<_Scalar> {
 
   Scalar timestep_;
 
-  IntegratorRK2Tpl(const xyz::polymorphic<ODEType> &cont_dynamics,
+  IntegratorRK2Tpl(const shared_ptr<ODEType> &cont_dynamics,
                    const Scalar timestep);
   void forward(const ConstVectorRef &x, const ConstVectorRef &u,
                BaseData &data) const;
   void dForward(const ConstVectorRef &x, const ConstVectorRef &u,
                 BaseData &data) const;
 
-  shared_ptr<DynamicsDataTpl<Scalar>> createData() const {
+  shared_ptr<StageFunctionDataTpl<Scalar>> createData() const {
     return std::make_shared<Data>(this);
   }
 
@@ -46,7 +46,7 @@ template <typename Scalar>
 struct IntegratorRK2DataTpl : ExplicitIntegratorDataTpl<Scalar> {
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = ExplicitIntegratorDataTpl<Scalar>;
-  using ODEData = ContinuousDynamicsDataTpl<Scalar>;
+  using ODEData = ODEDataTpl<Scalar>;
   shared_ptr<ODEData> continuous_data2;
 
   VectorXs x1_;
@@ -63,6 +63,8 @@ struct IntegratorRK2DataTpl : ExplicitIntegratorDataTpl<Scalar> {
 
 } // namespace dynamics
 } // namespace aligator
+
+#include "aligator/modelling/dynamics/integrator-rk2.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "aligator/modelling/dynamics/integrator-rk2.txx"

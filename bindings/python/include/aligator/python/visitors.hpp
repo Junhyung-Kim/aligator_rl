@@ -1,8 +1,9 @@
 /// @file
-/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, 2022-2025 INRIA
+/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, INRIA
 #pragma once
 
 #include <eigenpy/fwd.hpp>
+#include <fmt/format.h>
 
 namespace aligator {
 namespace python {
@@ -10,6 +11,13 @@ namespace bp = boost::python;
 
 // fwd-declaration
 bp::arg operator""_a(const char *argname, std::size_t);
+
+template <typename T>
+struct ClonePythonVisitor : bp::def_visitor<ClonePythonVisitor<T>> {
+  template <typename PyT> void visit(PyT &obj) const {
+    obj.def("clone", &T::clone, bp::args("self"), "Clone the object.");
+  }
+};
 
 template <typename T>
 struct CreateDataPythonVisitor : bp::def_visitor<CreateDataPythonVisitor<T>> {
@@ -37,8 +45,7 @@ struct CreateDataPolymorphicPythonVisitor
 template <typename T>
 struct CopyableVisitor : bp::def_visitor<CopyableVisitor<T>> {
   template <typename PyClass> void visit(PyClass &obj) const {
-    obj.def("copy", &copy, bp::arg("self"), "Returns a copy of this.")
-        .def("__copy__", &copy, bp::arg("self"), "Returns a copy of this.");
+    obj.def("copy", &copy, bp::arg("self"), "Returns a copy of this.");
   }
 
 private:
@@ -59,7 +66,7 @@ struct PrintAddressVisitor : bp::def_visitor<PrintAddressVisitor<T>> {
   }
   static void *getAddress(const T &a) { return (void *)&a; }
   static void printAddress(const T &a) {
-    printf("Address: %p\n", getAddress(a));
+    fmt::print("Address: {:p}\n", getAddress(a));
   }
 };
 

@@ -1,46 +1,40 @@
 /// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 #include "aligator/python/fwd.hpp"
 
-#ifdef ALIGATOR_WITH_PINOCCHIO
 #include "aligator/modelling/dynamics/kinodynamics-fwd.hpp"
-#include "aligator/modelling/spaces/multibody.hpp"
-#include "aligator/modelling/multibody/context.hpp"
+#include <pinocchio/multibody/fwd.hpp>
+#include <proxsuite-nlp/modelling/spaces/multibody.hpp>
 #include <pinocchio/multibody/model.hpp>
 
 namespace aligator {
 namespace python {
-
 void exposeKinodynamics() {
   using namespace aligator::dynamics;
   using context::Scalar;
   using context::StageFunction;
   using context::StageFunctionData;
   using context::UnaryFunction;
-  using ODEData = ContinuousDynamicsDataTpl<Scalar>;
+  using ODEData = ODEDataTpl<Scalar>;
   using ODEAbstract = ODEAbstractTpl<Scalar>;
-  using ContinuousDynamicsAbstract = ContinuousDynamicsAbstractTpl<Scalar>;
   using KinodynamicsFwdData = KinodynamicsFwdDataTpl<Scalar>;
   using KinodynamicsFwdDynamics = KinodynamicsFwdDynamicsTpl<Scalar>;
-  using context::MultibodyPhaseSpace;
+  using Manifold = proxsuite::nlp::MultibodyPhaseSpace<Scalar>;
+  using ManifoldPtr = shared_ptr<Manifold>;
   using Vector3s = typename math_types<Scalar>::Vector3s;
 
   using Model = pinocchio::ModelTpl<Scalar>;
 
-  const PolymorphicMultiBaseVisitor<ODEAbstract, ContinuousDynamicsAbstract>
-      ode_visitor;
-
   bp::class_<KinodynamicsFwdDynamics, bp::bases<ODEAbstract>>(
       "KinodynamicsFwdDynamics",
       "Centroidal forward dynamics + kinematics using Pinocchio.",
-      bp::init<const MultibodyPhaseSpace &, const Model &, const Vector3s &,
+      bp::init<const ManifoldPtr &, const Model &, const Vector3s &,
                const std::vector<bool> &,
                const std::vector<pinocchio::FrameIndex> &, const int>(
           "Constructor.",
           bp::args("self", "space", "model", "gravity", "contact_states",
                    "contact_ids", "force_size")))
       .def_readwrite("contact_states",
-                     &KinodynamicsFwdDynamics::contact_states_)
-      .def(ode_visitor);
+                     &KinodynamicsFwdDynamics::contact_states_);
 
   bp::register_ptr_to_python<shared_ptr<KinodynamicsFwdData>>();
 
@@ -48,7 +42,5 @@ void exposeKinodynamics() {
                                                       bp::no_init)
       .def_readwrite("pin_data", &KinodynamicsFwdData::pin_data_);
 }
-
 } // namespace python
 } // namespace aligator
-#endif

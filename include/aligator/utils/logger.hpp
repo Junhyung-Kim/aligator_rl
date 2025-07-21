@@ -2,16 +2,17 @@
 /// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 #pragma once
 
+#include <array>
 #include <string_view>
 #include <vector>
-#include <boost/unordered_map.hpp>
+#include <map>
 
 namespace aligator {
 using uint = unsigned int;
 
-constexpr std::string_view int_format = "{: >{}d} ";
-constexpr std::string_view sci_format = "{: >{}.3e} ";
-constexpr std::string_view dbl_format = "{: >{}.3g} ";
+constexpr std::string_view int_format = "{: >{}d}";
+constexpr std::string_view sci_format = "{: >{}.4e}";
+constexpr std::string_view dbl_format = "{: >{}.4g}";
 struct LogColumn {
   std::string_view name;
   std::string_view format;
@@ -19,19 +20,25 @@ struct LogColumn {
 };
 
 // log columns names and widths
-static const LogColumn BASIC_KEYS[12] = {
-    {"iter", int_format, 5U},        {"alpha", sci_format, 10U},
-    {"inner_crit", sci_format, 11U}, {"prim_err", sci_format, 10U},
-    {"dual_err", sci_format, 10U},   {"preg", sci_format, 10U},
-    {"cost", sci_format, 10U},       {"dphi0", sci_format, 11U},
-    {"merit", sci_format, 10U},      {"ΔM", sci_format, 11U},
-    {"aliter", int_format, 7U},      {"mu", dbl_format, 7U}};
+static const std::array<LogColumn, 11> BASIC_KEYS = {
+    {{"iter", int_format, 5U},
+     {"alpha", sci_format, 10U},
+     {"inner_crit", sci_format, 10U},
+     {"prim_err", sci_format, 10U},
+     {"dual_err", sci_format, 10U},
+     {"preg", sci_format, 10U},
+     {"dphi0", sci_format, 11U},
+     {"merit", sci_format, 11U},
+     {"ΔM", sci_format, 11U},
+     {"aliter", int_format, 7U},
+     {"mu", dbl_format, 8U}}};
 
 /// @brief  A table logging utility to log the trace of the numerical solvers.
 struct Logger {
   bool active = true;
+  static constexpr std::string_view join_str = "｜";
 
-  explicit Logger() = default;
+  Logger();
 
   void printHeadline();
   void log();
@@ -47,9 +54,8 @@ struct Logger {
 protected:
   // sizes and formats
   std::vector<std::string_view> m_colNames;
-  boost::unordered_map<std::string_view, std::pair<uint, std::string>>
-      m_colSpecs;
-  boost::unordered_map<std::string_view, std::string> m_currentLine;
+  std::map<std::string_view, std::pair<uint, std::string>> m_colSpecs;
+  std::map<std::string_view, std::string> m_currentLine;
 };
 
 } // namespace aligator

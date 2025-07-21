@@ -5,12 +5,12 @@ namespace aligator {
 namespace python {
 namespace bp = boost::python;
 
-template <typename BlockMatrixType> struct BlkMatrixPythonVisitor;
+template <typename BlockMatrixType>
+struct BlkMatrixPythonVisitor
+    : bp::def_visitor<BlkMatrixPythonVisitor<BlockMatrixType>> {
 
-template <typename MatrixType, int N, int M>
-struct BlkMatrixPythonVisitor<BlkMatrix<MatrixType, N, M>>
-    : bp::def_visitor<BlkMatrixPythonVisitor<BlkMatrix<MatrixType, N, M>>> {
-  using BlockMatrixType = BlkMatrix<MatrixType, N, M>;
+  enum { N = BlockMatrixType::N, M = BlockMatrixType::M };
+  using MatrixType = typename BlockMatrixType::MatrixType;
   using RefType = Eigen::Ref<MatrixType>;
 
   using Self = BlkMatrixPythonVisitor<BlockMatrixType>;

@@ -11,11 +11,9 @@
 #include "aligator/gar/dense-riccati.hpp"
 
 #include "test_util.hpp"
-#include <aligator/fmt-eigen.hpp>
+#include <proxsuite-nlp/fmt-eigen.hpp>
 
 using namespace aligator::gar;
-static std::pmr::monotonic_buffer_resource mbr{1024 * 2048};
-static aligator::polymorphic_allocator alloc{&mbr};
 
 BOOST_AUTO_TEST_CASE(short_horz_pb) {
   // dual regularization parameters
@@ -26,16 +24,16 @@ BOOST_AUTO_TEST_CASE(short_horz_pb) {
   VectorXs x0 = VectorXs::Ones(nx);
   VectorXs x1 = -VectorXs::Ones(nx);
   auto init_knot = [&](uint nc = 0) {
-    knot_t knot(nx, nu, nc, alloc);
-    knot.A.to_map() << 0.1, 0., -0.1, 0.01;
+    knot_t knot(nx, nu, nc);
+    knot.A << 0.1, 0., -0.1, 0.01;
     knot.B.setRandom();
     knot.E.setIdentity();
-    knot.E.to_map() *= -1;
+    knot.E *= -1;
     knot.f.setRandom();
     knot.Q.setIdentity();
-    knot.Q.to_map() *= 0.01;
+    knot.Q *= 0.01;
     knot.R.setIdentity();
-    knot.R.to_map() *= 0.1;
+    knot.R *= 0.1;
     return knot;
   };
   auto base_knot = init_knot();
@@ -51,7 +49,7 @@ BOOST_AUTO_TEST_CASE(short_horz_pb) {
   knots[4] = init_knot(nu);
   knots[4].D.setIdentity();
   knots[4].d.setConstant(0.1);
-  knots[N] = std::move(knot1);
+  knots[N] = knot1;
   problem_t prob(knots, nx);
   prob.g0 = -x0;
   prob.G0.setIdentity();
@@ -81,7 +79,7 @@ BOOST_AUTO_TEST_CASE(short_horz_pb) {
   // check error
   KktError err = computeKktError(prob, xs, us, vs, lbdas);
 
-  fmt::println("{}", err);
+  printKktError(err);
 
   BOOST_CHECK_LE(err.max, 1e-9);
 
@@ -136,7 +134,7 @@ BOOST_AUTO_TEST_CASE(random_long_problem) {
   fmt::print("Elapsed time (fwd): {:d}\n", t_fwd.count());
 
   KktError err = computeKktError(prob, xs, us, vs, lbdas);
-  fmt::println("{}", err);
+  printKktError(err);
 
   BOOST_CHECK_LE(err.max, 1e-9);
 
@@ -152,7 +150,7 @@ BOOST_AUTO_TEST_CASE(random_long_problem) {
     auto [xsd, usd, vsd, lbdasd] = lqrInitializeSolution(prob);
     denseSolver.forward(xsd, usd, vsd, lbdasd);
     KktError err = computeKktError(prob, xsd, usd, vsd, lbdasd);
-    fmt::println("{}", err);
+    printKktError(err);
     BOOST_CHECK_LE(err.max, 1e-9);
   }
 }
@@ -178,7 +176,7 @@ BOOST_AUTO_TEST_CASE(parametric) {
     fmt::print("e = {}\n", e.transpose());
 
     KktError err = computeKktError(problem, xs, us, vs, lbdas, theta);
-    fmt::println("{}", err);
+    printKktError(err);
     BOOST_CHECK_LE(err.max, 1e-10);
   };
 

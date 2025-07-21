@@ -5,7 +5,6 @@
 
 #include <pinocchio/multibody/model.hpp>
 #include <pinocchio/multibody/frame.hpp>
-#include "aligator/third-party/polymorphic_cxx14.h"
 
 namespace aligator {
 
@@ -19,13 +18,14 @@ struct FrameTranslationResidualTpl : UnaryFunctionTpl<_Scalar>, frame_api {
   ALIGATOR_UNARY_FUNCTION_INTERFACE(Scalar);
   using BaseData = typename Base::Data;
   using Model = pinocchio::ModelTpl<Scalar>;
-  using ManifoldPtr = xyz::polymorphic<ManifoldAbstractTpl<Scalar>>;
+  using ManifoldPtr = shared_ptr<ManifoldAbstractTpl<Scalar>>;
   using SE3 = pinocchio::SE3Tpl<Scalar>;
   using Data = FrameTranslationDataTpl<Scalar>;
 
-  Model pin_model_;
+  shared_ptr<Model> pin_model_;
 
-  FrameTranslationResidualTpl(const int ndx, const int nu, const Model &model,
+  FrameTranslationResidualTpl(const int ndx, const int nu,
+                              const shared_ptr<Model> &model,
                               const Vector3s &frame_trans,
                               const pinocchio::FrameIndex frame_id);
 
@@ -61,6 +61,8 @@ struct FrameTranslationDataTpl : StageFunctionDataTpl<Scalar> {
 
 } // namespace aligator
 
+#include "aligator/modelling/multibody/frame-translation.hxx"
+
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-#include "aligator/modelling/multibody/frame-translation.txx"
+#include "./frame-translation.txx"
 #endif

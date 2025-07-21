@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>aligator</name>
-  <version>0.15.0</version>
+  <version>0.6.1</version>
   <maintainer email="wilson.jallet@laas.fr">Wilson Jallet</maintainer>
   <description>A primal-dual augmented Lagrangian-type solver for trajectory optimization.</description>
   <license>tbd</license>
@@ -15,6 +15,7 @@
   <depend>boost</depend>
   <depend>eigenpy</depend>
   <depend>fmtlib</depend>
+  <depend>proxsuite-nlp</depend>
   <depend>pinocchio</depend>
   <depend>crocoddyl</depend>
 

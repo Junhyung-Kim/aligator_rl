@@ -2,13 +2,14 @@ import numpy as np
 import aligator
 from aligator import dynamics, manifolds
 import pytest
-from utils import create_linear_ode, create_multibody_ode, infNorm
+from utils import create_linear_ode, create_multibody_ode
 
 EPSILON = 1e-5
+ATOL = EPSILON**0.5
 
 
-def dynamics_finite_difference(
-    dyn: aligator.dynamics.DynamicsModel,
+def function_finite_difference(
+    fun: aligator.StageFunction,
     space: manifolds.ManifoldAbstract,
     x0,
     u0,
@@ -16,49 +17,46 @@ def dynamics_finite_difference(
     eps=EPSILON,
 ):
     """Use finite differences to compute Jacobians
-    of a `aligator.dynamics.DynamicsModel`.
+    of a `aligator.StageFunction`.
 
     TODO: move to a test utils file
     """
     if y0 is None:
         y0 = x0
-    data = dyn.createData()
-    Jx_nd = np.zeros((dyn.ndx2, dyn.ndx1))
-    ei = np.zeros(dyn.ndx1)
-    dyn.evaluate(x0, u0, y0, data)
+    data = fun.createData()
+    Jx_nd = np.zeros((fun.nr, fun.ndx1))
+    ei = np.zeros(fun.ndx1)
+    fun.evaluate(x0, u0, y0, data)
     r0 = data.value.copy()
-    for i in range(dyn.ndx1):
+    for i in range(fun.ndx1):
         ei[i] = eps
         xplus = space.integrate(x0, ei)
-        dyn.evaluate(xplus, u0, y0, data)
+        fun.evaluate(xplus, u0, y0, data)
         Jx_nd[:, i] = (data.value - r0) / eps
         ei[i] = 0.0
 
-    ei = np.zeros(dyn.nu)
-    Ju_nd = np.zeros((dyn.ndx2, dyn.nu))
-    for i in range(dyn.nu):
+    ei = np.zeros(fun.nu)
+    Ju_nd = np.zeros((fun.nr, fun.nu))
+    for i in range(fun.nu):
         ei[i] = eps
-        dyn.evaluate(x0, u0 + ei, y0, data)
+        fun.evaluate(x0, u0 + ei, y0, data)
         Ju_nd[:, i] = (data.value - r0) / eps
         ei[i] = 0.0
 
-    ei = np.zeros(dyn.ndx2)
+    ei = np.zeros(fun.ndx2)
     yplus = y0.copy()
-    Jy_nd = np.zeros((dyn.ndx2, dyn.ndx2))
-    for i in range(dyn.ndx2):
+    Jy_nd = np.zeros((fun.nr, fun.ndx2))
+    for i in range(fun.ndx2):
         ei[i] = eps
         space.integrate(y0, ei, yplus)
-        dyn.evaluate(x0, u0, yplus, data)
+        fun.evaluate(x0, u0, yplus, data)
         Jy_nd[:, i] = (data.value - r0) / eps
         ei[i] = 0.0
 
     return Jx_nd, Ju_nd, Jy_nd
 
 
-def explicit_dynamics_finite_difference(
-    dyn: dynamics.ExplicitDynamicsModel, x0, u0, eps
-):
-    assert isinstance(dyn, dynamics.ExplicitDynamicsModel)
+def finite_difference_explicit_dyn(dyn: dynamics.IntegratorAbstract, x0, u0, eps):
     data = dyn.createData()
     space: manifolds.ManifoldAbstract = dyn.space
     Jx_nd = np.zeros((dyn.ndx2, dyn.ndx1))
@@ -87,10 +85,7 @@ def explicit_dynamics_finite_difference(
     return Jx_nd, Ju_nd
 
 
-@pytest.mark.parametrize(
-    "ode",
-    [create_linear_ode(4, 2), create_multibody_ode()],
-)
+@pytest.mark.parametrize("ode", [create_linear_ode(4, 2), create_multibody_ode()])
 @pytest.mark.parametrize(
     "integrator",
     [
@@ -103,19 +98,8 @@ def test_explicit_integrator_combinations(ode, integrator):
     dt = 0.1
     if ode is None:
         return True
-    for i in range(100):
-        aligator.seed(i)
-        np.random.seed(i)
-        dyn = integrator(ode, dt)
-        try:
-            x = ode.space.rand()
-            x = np.clip(x, -5, 5)
-            u = np.random.randn(ode.nu)
-
-            exp_dyn_fd_check(dyn, x, u, eps=1e-7)
-        except AssertionError:
-            print("Random seed:", i)
-            raise
+    dyn = integrator(ode, dt)
+    ode_int_run(ode, dyn)
 
 
 @pytest.mark.parametrize("dae", [create_linear_ode(4, 3), create_multibody_ode()])
@@ -132,28 +116,32 @@ def test_implicit_integrator(
     dyn.evaluate(x, u, x, data)
     assert isinstance(data, dynamics.IntegratorData)
 
-    Jx_nd, Ju_nd, Jy_nd = dynamics_finite_difference(dyn, dyn.space, x, u, eps=EPSILON)
+    Jx_nd, Ju_nd, Jy_nd = function_finite_difference(dyn, dyn.space, x, u)
 
     dyn.evaluate(x, u, x, data)
     dyn.computeJacobians(x, u, x, data)
-    atol = EPSILON**0.5
-    assert np.allclose(data.Jx, Jx_nd, atol=atol)
-    assert np.allclose(data.Ju, Ju_nd, atol=atol)
-    assert np.allclose(data.Jy, Jy_nd, atol=atol)
+    assert np.allclose(data.Jx, Jx_nd, atol=ATOL)
+    assert np.allclose(data.Ju, Ju_nd, atol=ATOL)
+    assert np.allclose(data.Jy, Jy_nd, atol=ATOL)
 
 
-def exp_dyn_fd_check(dyn: dynamics.ExplicitDynamicsModel, x, u, eps: float):
-    Jx_nd, Ju_nd = explicit_dynamics_finite_difference(dyn, x, u, eps=eps)
+def exp_dyn_fd_check(dyn, x, u, eps=EPSILON):
+    Jx_nd, Ju_nd = finite_difference_explicit_dyn(dyn, x, u, eps=eps)
 
     np.set_printoptions(precision=3, linewidth=250)
     data = dyn.createData()
     dyn.forward(x, u, data)
     dyn.dForward(x, u, data)
-    atol = eps**0.5
-    assert np.allclose(data.Jx, Jx_nd, atol=atol), (
-        f"Error value: {infNorm(data.Jx - Jx_nd)}"
-    )
-    assert np.allclose(data.Ju, Ju_nd, atol=atol)
+    assert np.allclose(data.Jx, Jx_nd, atol=ATOL)
+    assert np.allclose(data.Ju, Ju_nd, atol=ATOL)
+
+
+def ode_int_run(ode, dyn):
+    x = ode.space.rand()
+    x = np.clip(x, -5, 5)
+    u = np.random.randn(ode.nu)
+
+    exp_dyn_fd_check(dyn, x, u)
 
 
 if __name__ == "__main__":

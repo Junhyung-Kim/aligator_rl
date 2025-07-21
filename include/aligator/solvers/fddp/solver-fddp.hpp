@@ -1,5 +1,5 @@
 /// @file
-/// @copyright Copyright (C) 2022 LAAS-CNRS, 2022, 2025 INRIA
+/// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 ///
 /// @page fddp_intro The FDDP algorithm
 /// @htmlinclude fddp.html
@@ -7,24 +7,48 @@
 
 #include "aligator/core/callback-base.hpp"
 #include "aligator/core/explicit-dynamics.hpp"
-#include "aligator/core/linesearch-base.hpp"
+#include "aligator/core/linesearch.hpp"
 
-#include "workspace.hpp"
-#include "results.hpp"
+#include "./results.hpp"
+#include "./workspace.hpp"
 
 #include "aligator/utils/logger.hpp"
 #include "aligator/threads.hpp"
 
-#include <boost/unordered_map.hpp>
+#include <fmt/ostream.h>
+#include <unordered_map>
+#include <torch/torch.h>
+#include <mutex>
+#include <vector>
+
+/// @brief  A warning for the FDDP module.
+#define ALIGATOR_FDDP_WARNING(msg) ALIGATOR_WARNING("SolverFDDP", msg)
 
 namespace aligator {
+  /// @brief RL policy for predicting step size in FDDP linesearch.
+  struct StepSizePolicy : torch::nn::Module {
+  StepSizePolicy(int state_dim) {
+    fc1 = register_module("fc1", torch::nn::Linear(state_dim, 64));
+    fc2 = register_module("fc2", torch::nn::Linear(64, 64));
+    fc3 = register_module("fc3", torch::nn::Linear(64, 1));
+  }
+
+  torch::Tensor forward(torch::Tensor x) {
+    x = torch::relu(fc1->forward(x));
+    x = torch::relu(fc2->forward(x));
+    x = torch::sigmoid(fc3->forward(x));
+    return x;
+  }
+
+  torch::nn::Linear fc1{nullptr}, fc2{nullptr}, fc3{nullptr};
+};
 
 /**
  * @brief   The feasible DDP (FDDP) algorithm, from Mastalli et al. (2020).
  * @details The implementation very similar to Crocoddyl's SolverFDDP.
- *
  */
-template <typename Scalar> struct SolverFDDPTpl {
+template <typename Scalar>
+struct SolverFDDPTpl {
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Problem = TrajOptProblemTpl<Scalar>;
   using StageModel = StageModelTpl<Scalar>;
@@ -39,7 +63,7 @@ template <typename Scalar> struct SolverFDDPTpl {
   using ExpModel = ExplicitDynamicsModelTpl<Scalar>;
   using ExplicitDynamicsData = ExplicitDynamicsDataTpl<Scalar>;
   using CallbackPtr = shared_ptr<CallbackBaseTpl<Scalar>>;
-  using CallbackMap = boost::unordered_map<std::string, CallbackPtr>;
+  using CallbackMap = std::unordered_map<std::string, CallbackPtr>;
 
   Scalar target_tol_;
 
@@ -65,8 +89,7 @@ template <typename Scalar> struct SolverFDDPTpl {
   /// Maximum number of iterations for the solver.
   std::size_t max_iters;
   /// Crocoddyl's FDDP implementation forces the initial state in linesearch to
-  /// satisfy the initial condition. This flag switches that behaviour on or
-  /// off.
+  /// satisfy the initial condition. This flag switches that behaviour on or off.
   bool force_initial_condition_;
 
   Logger logger{};
@@ -82,6 +105,13 @@ protected:
   std::size_t num_threads_;
   /// Callbacks
   CallbackMap callbacks_;
+  /// RL policy and transition storage
+  std::shared_ptr<StepSizePolicy> rl_policy_;
+  std::vector<std::vector<Scalar>>* states_;
+  std::vector<Scalar>* alphas_;
+  std::vector<Scalar>* rewards_;
+  std::vector<std::vector<Scalar>>* next_states_;
+  std::mutex* transitions_mutex_;
 
 public:
   Results results_;
@@ -92,54 +122,48 @@ public:
                 const Scalar reg_init = 1e-9,
                 const std::size_t max_iters = 200);
 
+  /// @brief  Get the solver results.
+  ALIGATOR_DEPRECATED const Results& getResults() const { return results_; }
+  /// @brief  Get a const reference to the solver's workspace.
+  ALIGATOR_DEPRECATED const Workspace& getWorkspace() const { return workspace_; }
+
   /// @brief Allocate workspace and results structs.
-  void setup(const Problem &problem);
+  void setup(const Problem& problem);
 
   /**
    * @brief   Perform a nonlinear rollout, keeping an infeasibility gap.
    * @details Perform a nonlinear rollout using the computed sensitivity gains
    * from the backward pass, while keeping the dynamical feasibility gaps open
    * proportionally to the step-size @p alpha.
-   * @param[in]   problem
-   * @param[in]   results
-   * @param[out]  workspace
-   * @param[in]   alpha step-size.
    */
-  static Scalar forwardPass(const Problem &problem, const Results &results,
-                            Workspace &workspace, const Scalar alpha);
+  static Scalar forwardPass(const Problem& problem, const Results& results,
+                            Workspace& workspace, const Scalar alpha);
 
   /**
    * @brief     Pre-compute parts of the directional derivatives -- this is done
    * before linesearch.
-   * @details   Inspired from Crocoddyl's own function,
-   * crocoddyl::SolverFDDP::updateExpectedImprovement
    */
-  void updateExpectedImprovement(Workspace &workspace, Results &results) const;
+  void updateExpectedImprovement(Workspace& workspace, Results& results) const;
 
   /**
    * @brief    Finish computing the directional derivatives -- this is done
    * *within* linesearch.
-   * @details  Inspired from Crocoddyl's own function,
-   * crocoddyl::SolverFDDP::expectedImprovement
    */
-  void expectedImprovement(Workspace &workspace, Scalar &d1, Scalar &d2) const;
+  void expectedImprovement(Workspace& workspace, Scalar& d1, Scalar& d2) const;
 
   /**
    * @brief   Computes dynamical feasibility gaps.
    * @details This computes the difference \f$x_{i+1} \ominus f(x_i, u_i)$, as
-   * well as the residual of initial condition. This function will compute the
-   * forward dynamics at every step to compute the forward map $f(x_i, u_i)$.
+   * well as the residual of initial condition.
    */
-  inline Scalar computeInfeasibility(const Problem &problem);
+  inline Scalar computeInfeasibility(const Problem& problem);
 
   /// @brief   Perform the backward pass and compute Riccati gains.
-  void backwardPass(const Problem &problem, Workspace &workspace) const;
+  void backwardPass(const Problem& problem, Workspace& workspace) const;
 
   /// @brief   Accept the gains computed in the last backwardPass().
-  /// @details This is called if the convergence check after computeCriterion()
-  /// did not exit.
-  ALIGATOR_INLINE void acceptGains(const Workspace &workspace,
-                                   Results &results) const {
+  ALIGATOR_INLINE void acceptGains(const Workspace& workspace,
+                                   Results& results) const {
     assert(workspace.kktRhs.size() == results.gains_.size());
     ALIGATOR_NOMALLOC_SCOPED;
     results.gains_ = workspace.kktRhs;
@@ -156,23 +180,16 @@ public:
   }
 
   /// @brief Compute the dual feasibility of the problem.
-  inline Scalar computeCriterion(Workspace &workspace);
+  inline Scalar computeCriterion(Workspace& workspace);
 
   /// @brief    Add a callback to the solver instance.
-  void registerCallback(const std::string &name, CallbackPtr cb) {
+  void registerCallback(const std::string& name, CallbackPtr cb) {
     callbacks_[name] = cb;
   }
 
-  const CallbackMap &getCallbacks() const { return callbacks_; }
-  void removeCallback(const std::string &name) { callbacks_.erase(name); }
-  auto getCallbackNames() const {
-    std::vector<std::string> keys;
-    for (const auto &item : callbacks_) {
-      keys.push_back(item.first);
-    }
-    return keys;
-  }
-  CallbackPtr getCallback(const std::string &name) const {
+  const CallbackMap& getCallbacks() const { return callbacks_; }
+  void removeCallback(const std::string& name) { callbacks_.erase(name); }
+  auto getCallback(const std::string& name) -> CallbackPtr {
     auto cb = callbacks_.find(name);
     if (cb != end(callbacks_)) {
       return cb->second;
@@ -183,20 +200,79 @@ public:
   /// @brief    Remove all callbacks from the instance.
   void clearCallbacks() { callbacks_.clear(); }
 
-  void invokeCallbacks(Workspace &workspace, Results &results) {
-    for (const auto &cb : callbacks_) {
+  void invokeCallbacks(Workspace& workspace, Results& results) {
+    for (const auto& cb : callbacks_) {
       cb.second->call(workspace, results);
     }
   }
 
-  bool run(const Problem &problem, const std::vector<VectorXs> &xs_init = {},
-           const std::vector<VectorXs> &us_init = {});
+  bool run(const Problem& problem, const std::vector<VectorXs>& xs_init = {},
+           const std::vector<VectorXs>& us_init = {});
 
-  static const ExplicitDynamicsData &
-  stage_get_dynamics_data(const StageDataTpl<Scalar> &data);
+  /// @brief Get state features for RL policy.
+  std::vector<Scalar> get_state_features() const;
+
+  std::pair<Scalar, Scalar> rl_fddp_linesearch(
+      std::function<Scalar(Scalar)> phi, const auto model,
+      const Scalar phi0, const typename Linesearch<Scalar>::Options& ls_params,
+      std::shared_ptr<StepSizePolicy> policy,
+      std::vector<std::vector<Scalar>>* states, std::vector<Scalar>* alphas,
+      std::vector<Scalar>* rewards, std::vector<std::vector<Scalar>>* next_states,
+      std::mutex* mutex) const {
+    auto state = get_state_features();
+    auto state_tensor = torch::tensor(state, torch::kFloat32);
+
+    torch::NoGradGuard no_grad;
+    Scalar atry = policy->forward(state_tensor).template item<Scalar>();
+    Scalar phitry;
+
+    try {
+      phitry = phi(atry);
+    } catch (const RuntimeError&) {
+      atry = ls_params.alpha_min;
+      phitry = phi0;
+    }
+
+    if (states && alphas && rewards && next_states && mutex) {
+      Scalar J_old = phi0;
+      Scalar J_new = phitry;
+      Scalar reward = J_old - J_new;
+      auto next_state = get_state_features();
+
+      std::lock_guard<std::mutex> lock(*mutex);
+      states->push_back(state);
+      alphas->push_back(atry);
+      rewards->push_back(reward);
+      next_states->push_back(next_state);
+    }
+
+    return {atry, phitry};
+  }
+
+  void setRLPolicy(
+    std::shared_ptr<StepSizePolicy> policy,
+                  std::vector<std::vector<Scalar>>* states,
+                  std::vector<Scalar>* alphas,
+                  std::vector<Scalar>* rewards,
+                  std::vector<std::vector<Scalar>>* next_states,
+                  std::mutex* mutex);
+  
+
+  /// @brief Get stored transitions for RL training.
+  std::tuple<std::vector<std::vector<Scalar>>, std::vector<Scalar>,
+             std::vector<Scalar>, std::vector<std::vector<Scalar>>>
+  getTransitions() const;
+
+  static const ExplicitDynamicsData&
+  stage_get_dynamics_data(const StageDataTpl<Scalar>& data) {
+    const DynamicsDataTpl<Scalar>& dd = *data.dynamics_data;
+    return static_cast<const ExplicitDynamicsData&>(dd);
+  }
 };
 
 } // namespace aligator
+
+#include "./solver-fddp.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "./solver-fddp.txx"

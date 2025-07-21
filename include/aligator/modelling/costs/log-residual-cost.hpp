@@ -16,15 +16,14 @@ template <typename Scalar> struct LogResidualCostTpl : CostAbstractTpl<Scalar> {
   using Manifold = ManifoldAbstractTpl<Scalar>;
 
   VectorXs barrier_weights_;
-  xyz::polymorphic<StageFunction> residual_;
+  shared_ptr<StageFunction> residual_;
 
-  LogResidualCostTpl(xyz::polymorphic<Manifold> space,
-                     xyz::polymorphic<StageFunction> function,
+  LogResidualCostTpl(shared_ptr<Manifold> space,
+                     shared_ptr<StageFunction> function,
                      const ConstVectorRef &scale);
 
-  LogResidualCostTpl(xyz::polymorphic<Manifold> space,
-                     xyz::polymorphic<StageFunction> function,
-                     const Scalar scale);
+  LogResidualCostTpl(shared_ptr<Manifold> space,
+                     shared_ptr<StageFunction> function, const Scalar scale);
 
   void evaluate(const ConstVectorRef &x, const ConstVectorRef &u,
                 CostDataAbstract &data) const;
@@ -38,17 +37,6 @@ template <typename Scalar> struct LogResidualCostTpl : CostAbstractTpl<Scalar> {
   shared_ptr<CostDataAbstract> createData() const {
     return std::make_shared<Data>(this->ndx(), this->nu,
                                   residual_->createData());
-  }
-
-  /// @brief Get a pointer to the underlying type of the residual, by attempting
-  /// to cast.
-  template <typename Derived> Derived *getResidual() {
-    return dynamic_cast<Derived *>(&*residual_);
-  }
-
-  /// @copybrief getResidual().
-  template <typename Derived> const Derived *getResidual() const {
-    return dynamic_cast<const Derived *>(&*residual_);
   }
 };
 

@@ -1,4 +1,4 @@
-#include "aligator/core/history-callback.hxx"
+#include "aligator/helpers/history-callback.hpp"
 
 namespace aligator {
 

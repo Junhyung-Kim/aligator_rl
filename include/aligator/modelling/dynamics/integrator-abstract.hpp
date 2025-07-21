@@ -29,18 +29,11 @@ public:
   using ContinuousDynamics = ContinuousDynamicsAbstractTpl<Scalar>;
 
   /// The underlying continuous dynamics.
-  xyz::polymorphic<ContinuousDynamics> continuous_dynamics_;
-
-  template <typename U> U *getDynamics() {
-    return dynamic_cast<U *>(&*continuous_dynamics_);
-  }
-  template <typename U> const U *getDynamics() const {
-    return dynamic_cast<const U *>(&*continuous_dynamics_);
-  }
+  shared_ptr<ContinuousDynamics> continuous_dynamics_;
 
   /// Constructor from instances of DynamicsType.
   explicit IntegratorAbstractTpl(
-      const xyz::polymorphic<ContinuousDynamics> &cont_dynamics);
+      const shared_ptr<ContinuousDynamics> &cont_dynamics);
   virtual ~IntegratorAbstractTpl() = default;
   shared_ptr<BaseData> createData() const;
 };
@@ -67,12 +60,14 @@ struct IntegratorDataTpl : DynamicsDataTpl<_Scalar> {
   /// Value of the time-derivative to use in the integration rule.
   VectorXs xdot_;
 
-  explicit IntegratorDataTpl(const IntegratorAbstractTpl<Scalar> &integrator);
+  explicit IntegratorDataTpl(const IntegratorAbstractTpl<Scalar> *integrator);
   virtual ~IntegratorDataTpl() = default;
 };
 
 } // namespace dynamics
 } // namespace aligator
+
+#include "aligator/modelling/dynamics/integrator-abstract.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "aligator/modelling/dynamics/integrator-abstract.txx"

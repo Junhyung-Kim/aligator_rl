@@ -1,9 +1,11 @@
 /// @copyright Copyright (C) 2024 LAAS-CNRS, INRIA
-#include "aligator/modelling/dynamics/integrator-rk2.hxx"
+#include "aligator/modelling/dynamics/integrator-rk2.hpp"
 
-namespace aligator::dynamics {
+namespace aligator {
+namespace dynamics {
 
 template struct IntegratorRK2Tpl<context::Scalar>;
 template struct IntegratorRK2DataTpl<context::Scalar>;
 
-} // namespace aligator::dynamics
+} // namespace dynamics
+} // namespace aligator

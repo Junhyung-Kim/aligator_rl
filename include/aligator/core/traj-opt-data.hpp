@@ -2,7 +2,7 @@
 /// @copyright Copyright (C) 2022-2024 LAAS-CNRS, INRIA
 #pragma once
 
-#include "aligator/fwd.hpp"
+#include "aligator/core/stage-data.hpp"
 
 namespace aligator {
 
@@ -11,6 +11,7 @@ template <typename _Scalar> struct TrajOptDataTpl {
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using StageFunctionData = StageFunctionDataTpl<Scalar>;
+  using ConstraintType = StageConstraintTpl<Scalar>;
   using StageData = StageDataTpl<Scalar>;
   using CostData = CostDataAbstractTpl<Scalar>;
 
@@ -32,13 +33,9 @@ template <typename _Scalar> struct TrajOptDataTpl {
   TrajOptDataTpl(const TrajOptProblemTpl<Scalar> &problem);
 };
 
-/// @brief Helper for computing the trajectory cost (from pre-computed problem
-/// data).
-/// @warning Call TrajOptProblemTpl::evaluate() first!
-template <typename Scalar>
-Scalar computeTrajectoryCost(const TrajOptDataTpl<Scalar> &problem_data);
-
 } // namespace aligator
+
+#include "aligator/core/traj-opt-data.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "aligator/core/traj-opt-data.txx"

@@ -1,12 +1,11 @@
 /// @file continuous-dynamics-abstract.hpp
 /// @brief Base definitions for continuous dynamics.
-/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, INRIA
+/// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 #pragma once
 
 #include "aligator/fwd.hpp"
 #include "aligator/modelling/dynamics/fwd.hpp"
-#include "aligator/core/manifold-base.hpp"
-#include "aligator/third-party/polymorphic_cxx14.h"
+#include <proxsuite-nlp/manifold-base.hpp>
 
 namespace aligator {
 namespace dynamics {
@@ -20,7 +19,7 @@ template <typename _Scalar> struct ContinuousDynamicsAbstractTpl {
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Manifold = ManifoldAbstractTpl<Scalar>;
-  using ManifoldPtr = xyz::polymorphic<Manifold>;
+  using ManifoldPtr = shared_ptr<Manifold>;
   using Data = ContinuousDynamicsDataTpl<Scalar>;
 
   /// State space.
@@ -85,6 +84,8 @@ template <typename _Scalar> struct ContinuousDynamicsDataTpl {
 
 } // namespace dynamics
 } // namespace aligator
+
+#include "aligator/modelling/dynamics/continuous-dynamics-abstract.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "aligator/modelling/dynamics/continuous-dynamics-abstract.txx"

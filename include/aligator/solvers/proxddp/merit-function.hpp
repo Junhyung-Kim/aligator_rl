@@ -4,10 +4,9 @@
 
 #include "aligator/fwd.hpp"
 #include "aligator/core/traj-opt-problem.hpp"
+#include "aligator/core/alm-weights.hpp"
 
 namespace aligator {
-
-template <typename Scalar> class ConstraintProximalScalerTpl;
 
 template <typename Scalar>
 Scalar costDirectionalDerivative(const WorkspaceTpl<Scalar> &workspace,
@@ -54,15 +53,15 @@ template <typename _Scalar> struct PDALFunction {
   using Workspace = WorkspaceTpl<Scalar>;
   using TrajOptProblem = TrajOptProblemTpl<Scalar>;
   using TrajOptData = TrajOptDataTpl<Scalar>;
+  using CstrProximalScaler = ConstraintProximalScalerTpl<Scalar>;
 
   /// @brief    Compute the merit function at the trial point.
   /// @warning  Evaluate the problem and proximal terms first!
-  static Scalar evaluate(const Scalar mudyn, const Scalar mucstr,
-                         const TrajOptProblem &problem,
+  static Scalar evaluate(const Scalar mu, const TrajOptProblem &problem,
                          const std::vector<VectorXs> &lams,
                          const std::vector<VectorXs> &vs, Workspace &workspace);
 
-  static Scalar directionalDerivative(const Scalar mudyn, const Scalar mucstr,
+  static Scalar directionalDerivative(const Scalar mu,
                                       const TrajOptProblem &problem,
                                       const std::vector<VectorXs> &lams,
                                       const std::vector<VectorXs> &vs,
@@ -70,6 +69,8 @@ template <typename _Scalar> struct PDALFunction {
 };
 
 } // namespace aligator
+
+#include "merit-function.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "merit-function.txx"

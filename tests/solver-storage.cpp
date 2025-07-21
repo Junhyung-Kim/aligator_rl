@@ -1,8 +1,8 @@
-#include "aligator/solvers/value-function.hpp"
+#include "aligator/core/value-function.hpp"
 
 #include <boost/test/unit_test.hpp>
 
-#include <aligator/fmt-eigen.hpp>
+#include <proxsuite-nlp/fmt-eigen.hpp>
 
 BOOST_AUTO_TEST_SUITE(solver_workspace)
 

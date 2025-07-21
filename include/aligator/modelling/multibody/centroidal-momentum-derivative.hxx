@@ -4,41 +4,19 @@
 
 #include <pinocchio/algorithm/centroidal-derivatives.hpp>
 #include <pinocchio/algorithm/centroidal.hpp>
-#include <pinocchio/algorithm/center-of-mass.hpp>
 #include <pinocchio/algorithm/center-of-mass-derivatives.hpp>
 
 namespace aligator {
 
 template <typename Scalar>
-CentroidalMomentumDerivativeResidualTpl<Scalar>::
-    CentroidalMomentumDerivativeResidualTpl(
-        const int ndx, const Model &model, const Vector3s &gravity,
-        const std::vector<bool> &contact_states,
-        const std::vector<pinocchio::FrameIndex> &contact_ids,
-        const int force_size)
-    : Base(ndx, (int)contact_states.size() * force_size + model.nv - 6, 6)
-    , pin_model_(model)
-    , gravity_(gravity)
-    , contact_states_(contact_states)
-    , contact_ids_(contact_ids)
-    , force_size_(force_size) {
-  mass_ = pinocchio::computeTotalMass(model);
-  if (contact_ids_.size() != contact_states_.size()) {
-    ALIGATOR_DOMAIN_ERROR(
-        fmt::format("contact_ids and contact_states should have same size: "
-                    "now ({} and {}).",
-                    contact_ids_.size(), contact_states_.size()));
-  }
-}
-
-template <typename Scalar>
 void CentroidalMomentumDerivativeResidualTpl<Scalar>::evaluate(
-    const ConstVectorRef &x, const ConstVectorRef &u, BaseData &data) const {
+    const ConstVectorRef &x, const ConstVectorRef &u, const ConstVectorRef &,
+    BaseData &data) const {
   Data &d = static_cast<Data &>(data);
   pinocchio::DataTpl<Scalar> &pdata = d.pin_data_;
 
-  const ConstVectorRef q = x.head(pin_model_.nq);
-  const ConstVectorRef v = x.tail(pin_model_.nv);
+  const auto q = x.head(pin_model_.nq);
+  const auto v = x.tail(pin_model_.nv);
 
   pinocchio::forwardKinematics(pin_model_, pdata, q);
   pinocchio::centerOfMass(pin_model_, pdata, q, v);
@@ -75,7 +53,8 @@ void CentroidalMomentumDerivativeResidualTpl<Scalar>::evaluate(
 
 template <typename Scalar>
 void CentroidalMomentumDerivativeResidualTpl<Scalar>::computeJacobians(
-    const ConstVectorRef &x, const ConstVectorRef &u, BaseData &data) const {
+    const ConstVectorRef &x, const ConstVectorRef &u, const ConstVectorRef &,
+    BaseData &data) const {
   Data &d = static_cast<Data &>(data);
   pinocchio::DataTpl<Scalar> &pdata = d.pin_data_;
 
@@ -124,10 +103,9 @@ template <typename Scalar>
 CentroidalMomentumDerivativeDataTpl<Scalar>::
     CentroidalMomentumDerivativeDataTpl(
         const CentroidalMomentumDerivativeResidualTpl<Scalar> *model)
-    : Base(model->ndx1, model->nu, 6)
-    , pin_data_(model->pin_model_)
-    , temp_(3, model->pin_model_.nv)
-    , fJf_(6, model->pin_model_.nv) {
+    : Base(model->ndx1, model->nu, model->ndx2, 6),
+      pin_data_(model->pin_model_), temp_(3, model->pin_model_.nv),
+      fJf_(6, model->pin_model_.nv) {
   fJf_.setZero();
   temp_.setZero();
 }

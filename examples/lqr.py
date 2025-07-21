@@ -23,12 +23,6 @@ class Args(tap.Tap):
 args = Args().parse_args()
 np.random.seed(42)
 
-TAG = "LQR"
-if args.bounds:
-    TAG += "_bounded"
-if args.term_cstr:
-    TAG += "_cstr"
-
 nx = 3  # dimension of the state manifold
 nu = 3  # dimension of the input
 space = manifolds.VectorSpace(nx)
@@ -65,7 +59,6 @@ if args.bounds:
     ctrl_fn = aligator.ControlErrorResidual(nx, np.zeros(nu))
     stage.addConstraint(ctrl_fn, constraints.BoxConstraint(u_min, u_max))
 
-print(stage)
 
 # Build our problem by appending stages and the optional terminal constraint
 nsteps = 20
@@ -77,17 +70,19 @@ for i in range(nsteps):
 xtar2 = 0.1 * np.ones(nx)
 if args.term_cstr:
     term_fun = aligator.StateErrorResidual(space, nu, xtar2)
-    problem.addTerminalConstraint(term_fun, constraints.EqualityConstraintSet())
+    problem.addTerminalConstraint(
+        aligator.StageConstraint(term_fun, constraints.EqualityConstraintSet())
+    )
 
 # Instantiate a solver separately
-mu_init = 1e-1 if args.bounds else 1e-4
+mu_init = 1e-3 if args.bounds else 1e-6
+rho_init = 0.0
 verbose = aligator.VerboseLevel.VERBOSE
 tol = 1e-8
-solver = aligator.SolverProxDDP(tol, mu_init, verbose=verbose)
+solver = aligator.SolverProxDDP(tol, mu_init, rho_init, verbose=verbose)
 
-his_cb = aligator.HistoryCallback(solver)
+his_cb = aligator.HistoryCallback()
 solver.registerCallback("his", his_cb)
-print("Registered callbacks:", solver.getCallbackNames().tolist())
 solver.max_iters = 20
 solver.rollout_type = aligator.ROLLOUT_LINEAR
 
@@ -105,8 +100,6 @@ print(res)
 
 plt.subplot(121)
 fig1: plt.Figure = plt.gcf()
-fig1.set_figwidth(6.4)
-fig1.set_figheight(3.6)
 
 lstyle = {"lw": 0.9, "marker": ".", "markersize": 5}
 trange = np.arange(nsteps + 1)
@@ -153,7 +146,7 @@ plt.legend(frameon=False, loc="lower right")
 plt.tight_layout()
 
 
-fig2: plt.Figure = plt.figure(figsize=(6.4, 3.6))
+fig2: plt.Figure = plt.figure()
 ax: plt.Axes = fig2.add_subplot()
 niter = res.num_iters
 ax.hlines(
@@ -164,13 +157,15 @@ ax.hlines(
     linestyles="-",
     linewidth=2.0,
 )
-plot_convergence(his_cb, ax, res, show_al_iters=True)
+plot_convergence(his_cb, ax, res)
 ax.set_title("Convergence (constrained LQR)")
+ax.legend(
+    [
+        "Tolerance $\\epsilon_\\mathrm{tol}$",
+        "Primal error $p$",
+        "Dual error $d$",
+    ]
+)
 fig2.tight_layout()
-fig_dicts = {"traj": fig1, "conv": fig2}
-
-for name, _fig in fig_dicts.items():
-    _fig: plt.Figure
-    _fig.savefig(f"assets/{TAG}_{name}.pdf")
 
 plt.show()

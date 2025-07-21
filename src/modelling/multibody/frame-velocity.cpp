@@ -1,4 +1,4 @@
-#include "aligator/modelling/multibody/frame-velocity.hxx"
+#include "aligator/modelling/multibody/frame-velocity.hpp"
 
 namespace aligator {
 

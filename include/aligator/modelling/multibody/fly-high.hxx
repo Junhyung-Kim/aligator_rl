@@ -1,19 +1,15 @@
 #pragma once
 
-#ifdef ALIGATOR_WITH_PINOCCHIO
 #include "aligator/modelling/multibody/fly-high.hpp"
 #include <pinocchio/algorithm/compute-all-terms.hpp>
-#include <pinocchio/algorithm/frames-derivatives.hpp>
 
 namespace aligator {
 
 template <typename Scalar>
 FlyHighResidualTpl<Scalar>::FlyHighResidualTpl(
-    const int ndx, const Model &model, const pinocchio::FrameIndex frame_id,
+    shared_ptr<PhaseSpace> state, const pinocchio::FrameIndex frame_id,
     Scalar slope, int nu)
-    : Base(ndx, nu, NR)
-    , slope_(slope)
-    , pin_model_(model) {
+    : Base(state->ndx(), nu, NR), slope_(slope), pmodel_(state->getModel()) {
   pin_frame_id_ = frame_id;
 }
 
@@ -21,12 +17,12 @@ template <typename Scalar>
 void FlyHighResidualTpl<Scalar>::evaluate(const ConstVectorRef &x,
                                           BaseData &data) const {
   Data &d = static_cast<Data &>(data);
-  const ConstVectorRef q = x.head(pin_model_.nq);
-  const ConstVectorRef v = x.segment(pin_model_.nq, pin_model_.nv);
-  pinocchio::forwardKinematics(pin_model_, d.pdata_, q, v);
-  pinocchio::updateFramePlacement(pin_model_, d.pdata_, pin_frame_id_);
+  auto q = x.head(pmodel_.nq);
+  auto v = x.segment(pmodel_.nq, pmodel_.nv);
+  pinocchio::forwardKinematics(pmodel_, d.pdata_, q, v);
+  pinocchio::updateFramePlacement(pmodel_, d.pdata_, pin_frame_id_);
 
-  d.value_ = pinocchio::getFrameVelocity(pin_model_, d.pdata_, pin_frame_id_,
+  d.value_ = pinocchio::getFrameVelocity(pmodel_, d.pdata_, pin_frame_id_,
                                          pinocchio::LOCAL_WORLD_ALIGNED)
                  .linear()
                  .template head<2>();
@@ -40,20 +36,18 @@ template <typename Scalar>
 void FlyHighResidualTpl<Scalar>::computeJacobians(const ConstVectorRef &x,
                                                   BaseData &data) const {
   Data &d = static_cast<Data &>(data);
-  const int nv = pin_model_.nv;
-  const ConstVectorRef q = x.head(pin_model_.nq);
-  const ConstVectorRef v = x.segment(pin_model_.nq, nv);
-  VectorXs a = VectorXs::Zero(nv);
+  const int nv = pmodel_.nv;
+  auto q = x.head(pmodel_.nq);
+  auto v = x.segment(pmodel_.nq, nv);
+  auto a = VectorXs::Zero(nv);
 
-  pinocchio::computeForwardKinematicsDerivatives(pin_model_, d.pdata_, q, v,
-                                                 pinocchio::make_const_ref(a));
-  pinocchio::getFrameVelocityDerivatives(pin_model_, d.pdata_, pin_frame_id_,
+  pinocchio::computeForwardKinematicsDerivatives(pmodel_, d.pdata_, q, v, a);
+  pinocchio::getFrameVelocityDerivatives(pmodel_, d.pdata_, pin_frame_id_,
                                          pinocchio::LOCAL, d.l_dnu_dq,
                                          d.l_dnu_dv);
-  const Vector3s &vf =
-      pinocchio::getFrameVelocity(pin_model_, d.pdata_, pin_frame_id_,
-                                  pinocchio::LOCAL)
-          .linear();
+  const Vector3s &vf = pinocchio::getFrameVelocity(
+                           pmodel_, d.pdata_, pin_frame_id_, pinocchio::LOCAL)
+                           .linear();
   using Matrix3s = Eigen::Matrix<Scalar, 3, 3>;
   const Matrix3s &R = d.pdata_.oMf[pin_frame_id_].rotation();
 
@@ -73,4 +67,3 @@ void FlyHighResidualTpl<Scalar>::computeJacobians(const ConstVectorRef &x,
 }
 
 } // namespace aligator
-#endif

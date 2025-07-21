@@ -1,4 +1,4 @@
-#include "aligator/modelling/multibody/frame-placement.hxx"
+#include "aligator/modelling/multibody/frame-placement.hpp"
 
 namespace aligator {
 

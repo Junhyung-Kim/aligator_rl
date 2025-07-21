@@ -30,14 +30,12 @@ public:
   using SE3 = pinocchio::SE3Tpl<Scalar>;
   using Data = CenterOfMassTranslationDataTpl<Scalar>;
 
-  Model pin_model_;
+  shared_ptr<Model> pin_model_;
 
   CenterOfMassTranslationResidualTpl(const int ndx, const int nu,
-                                     const Model &model,
+                                     const shared_ptr<Model> &model,
                                      const Vector3s &frame_trans)
-      : Base(ndx, nu, 3)
-      , pin_model_(model)
-      , p_ref_(frame_trans) {}
+      : Base(ndx, nu, 3), pin_model_(model), p_ref_(frame_trans) {}
 
   const Vector3s &getReference() const { return p_ref_; }
   void setReference(const Eigen::Ref<const Vector3s> &p_new) { p_ref_ = p_new; }
@@ -68,6 +66,8 @@ struct CenterOfMassTranslationDataTpl : StageFunctionDataTpl<Scalar> {
 };
 
 } // namespace aligator
+
+#include "aligator/modelling/multibody/center-of-mass-translation.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "./center-of-mass-translation.txx"

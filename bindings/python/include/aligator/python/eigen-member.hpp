@@ -22,8 +22,7 @@ template <typename MatrixType, typename Class> struct eigen_member {
 public:
   typedef Eigen::Ref<const MatrixType> ConstMatRef;
 
-  eigen_member(MatrixType Class::*which)
-      : m_which(which) {}
+  eigen_member(MatrixType Class::*which) : m_which(which) {}
 
   Eigen::Ref<MatrixType> operator()(Class &c) const { return c.*m_which; }
 

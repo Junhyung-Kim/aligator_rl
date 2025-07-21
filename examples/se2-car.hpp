@@ -1,18 +1,19 @@
 #pragma once
 
-#include "aligator/modelling/spaces/pinocchio-groups.hpp"
-#include <aligator/fmt-eigen.hpp>
+#include <proxsuite-nlp/modelling/spaces/pinocchio-groups.hpp>
+#include <proxsuite-nlp/fmt-eigen.hpp>
 #include <pinocchio/multibody/liegroup/special-euclidean.hpp>
 
 #include "aligator/core/traj-opt-problem.hpp"
 #include "aligator/modelling/costs/quad-state-cost.hpp"
 #include "aligator/modelling/state-error.hpp"
+#include "aligator/modelling/costs/composite-costs.hpp"
 #include "aligator/modelling/costs/sum-of-costs.hpp"
 #include "aligator/modelling/dynamics/ode-abstract.hpp"
 #include "aligator/modelling/dynamics/integrator-euler.hpp"
 
 using T = double;
-using SE2 = aligator::SETpl<2, T>;
+using SE2 = proxsuite::nlp::SETpl<2, T>;
 
 using namespace aligator;
 using StateError = StateErrorResidualTpl<T>;
@@ -32,9 +33,8 @@ ALIGATOR_DYNAMIC_TYPEDEFS(T);
 ///
 struct CarDynamics : dynamics::ODEAbstractTpl<T> {
   using Base = dynamics::ODEAbstractTpl<T>;
-  using ODEData = dynamics::ContinuousDynamicsDataTpl<T>;
-  CarDynamics()
-      : Base(SE2(), 2) {}
+  using ODEData = dynamics::ODEDataTpl<T>;
+  CarDynamics() : Base(std::make_shared<SE2>(), 2) {}
 
   void forward(const ConstVectorRef &x, const ConstVectorRef &u,
                ODEData &data) const override {
@@ -61,18 +61,20 @@ struct CarDynamics : dynamics::ODEAbstractTpl<T> {
 };
 
 inline auto create_se2_problem(std::size_t nsteps) {
-  auto space = SE2();
+  auto space = std::make_shared<SE2>();
   const int nu = 2;
-  const int ndx = space.ndx();
+  const int ndx = space->ndx();
 
-  VectorXs x0(space.nx());
+  VectorXs x0(space->nx());
   {
     double theta = 0.15355;
     pinocchio::SINCOS(theta, &x0[2], &x0[3]);
     x0[0] = 0.7;
     x0[1] = -0.1;
   }
-  const VectorXs x_target = space.neutral();
+  const VectorXs x_target = space->neutral();
+
+  auto state_err = std::make_shared<StateError>(space, nu, x_target);
 
   MatrixXs w_x = MatrixXs::Zero(ndx, ndx);
   w_x.diagonal().array() = 0.01;
@@ -82,19 +84,21 @@ inline auto create_se2_problem(std::size_t nsteps) {
 
   const T timestep = 0.05;
 
-  auto rcost = CostStackTpl<T>(space, nu);
-  auto rc1 = QuadStateCost(space, nu, x_target, w_x * timestep);
-  auto rc2 = QuadControlCost(space, nu, w_u * timestep);
-  rcost.addCost(rc1);
-  rcost.addCost(rc2);
+  auto rcost = std::make_shared<CostStackTpl<T>>(space, nu);
+  auto rc1 =
+      std::make_shared<QuadStateCost>(space, nu, x_target, w_x * timestep);
+  auto rc2 = std::make_shared<QuadControlCost>(space, nu, w_u * timestep);
+  rcost->addCost(rc1);
+  rcost->addCost(rc2);
 
-  auto ode = CarDynamics(); // xyz::polymorphic<CarDynamics>();
-  auto discrete_dyn = dynamics::IntegratorEulerTpl<T>(ode, timestep);
+  auto ode = std::make_shared<CarDynamics>();
+  auto discrete_dyn =
+      std::make_shared<dynamics::IntegratorEulerTpl<T>>(ode, timestep);
 
-  auto stage = StageModel(rcost, discrete_dyn);
+  auto stage = std::make_shared<StageModel>(rcost, discrete_dyn);
 
-  std::vector<xyz::polymorphic<StageModel>> stages(nsteps, stage);
+  std::vector<decltype(stage)> stages(nsteps, stage);
 
-  auto term_cost = QuadStateCost(space, nu, x_target, w_term);
+  auto term_cost = std::make_shared<QuadStateCost>(space, nu, x_target, w_term);
   return TrajOptProblem(x0, stages, term_cost);
 }

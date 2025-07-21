@@ -1,9 +1,8 @@
 /// @file
-/// @copyright Copyright (C) 2023 LAAS-CNRS, 2023-2025 INRIA
+/// @copyright Copyright (C) 2023 LAAS-CNRS, INRIA
 #pragma once
 
 #include "./composite-costs.hpp"
-#include <aligator/context.hpp>
 
 namespace aligator {
 
@@ -25,11 +24,11 @@ struct QuadraticResidualCostTpl : CostAbstractTpl<_Scalar> {
   using Manifold = ManifoldAbstractTpl<Scalar>;
 
   MatrixXs weights_;
-  xyz::polymorphic<StageFunction> residual_;
+  shared_ptr<StageFunction> residual_;
   bool gauss_newton = true;
 
-  QuadraticResidualCostTpl(xyz::polymorphic<Manifold> space,
-                           xyz::polymorphic<StageFunction> function,
+  QuadraticResidualCostTpl(shared_ptr<Manifold> space,
+                           shared_ptr<StageFunction> function,
                            const ConstMatrixRef &weights);
 
   void evaluate(const ConstVectorRef &x, const ConstVectorRef &u,
@@ -45,22 +44,9 @@ struct QuadraticResidualCostTpl : CostAbstractTpl<_Scalar> {
     return std::make_shared<Data>(this->ndx(), this->nu,
                                   residual_->createData());
   }
-
-  /// @brief Get a pointer to the underlying type of the residual, by attempting
-  /// to cast.
-  template <typename Derived> Derived *getResidual() {
-    return dynamic_cast<Derived *>(&*residual_);
-  }
-
-  /// @copybrief getResidual().
-  template <typename Derived> const Derived *getResidual() const {
-    return dynamic_cast<const Derived *>(&*residual_);
-  }
 };
 
-#ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 extern template struct QuadraticResidualCostTpl<context::Scalar>;
-#endif
 
 } // namespace aligator
 

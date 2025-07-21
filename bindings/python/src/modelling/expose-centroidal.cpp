@@ -1,14 +1,13 @@
 /// @file
 /// @copyright Copyright (C) 2023 LAAS-CNRS, INRIA
-#include "aligator/context.hpp"
 #include "aligator/python/fwd.hpp"
 #include "aligator/python/visitors.hpp"
 #include "aligator/modelling/centroidal/centroidal-translation.hpp"
 #include "aligator/modelling/centroidal/linear-momentum.hpp"
 #include "aligator/modelling/centroidal/angular-momentum.hpp"
 #include "aligator/modelling/centroidal/centroidal-acceleration.hpp"
-#include "aligator/modelling/centroidal/centroidal-friction-cone.hpp"
-#include "aligator/modelling/centroidal/centroidal-wrench-cone.hpp"
+#include "aligator/modelling/centroidal/friction-cone.hpp"
+#include "aligator/modelling/centroidal/wrench-cone.hpp"
 #include "aligator/modelling/centroidal/angular-acceleration.hpp"
 #include "aligator/modelling/centroidal/centroidal-wrapper.hpp"
 #include "aligator/modelling/contact-map.hpp"
@@ -25,22 +24,23 @@ using ContactMap = ContactMapTpl<Scalar>;
 void exposeContactMap() {
   bp::class_<ContactMap>(
       "ContactMap", "Store contact state and pose for centroidal problem",
-      bp::init<const std::vector<std::string> &, const std::vector<bool> &,
+      bp::init<const std::vector<bool> &,
                const StdVectorEigenAligned<context::Vector3s> &>(
-          ("self"_a, "contact_names", "contact_states", "contact_poses")))
+          bp::args("self", "contact_states", "contact_poses")))
       .def("addContact", &ContactMap::addContact,
-           ("self"_a, "name", "state", "pose"),
+           bp::args("self", "state", "pose"),
            "Add a contact to the contact map.")
-      .def("removeContact", &ContactMap::removeContact, ("self"_a, "i"),
+      .def("removeContact", &ContactMap::removeContact, bp::args("self", "i"),
            "Remove contact i from the contact map.")
-      .def("setContactPose", &ContactMap::setContactPose,
-           ("self"_a, "name", "ref"))
-      .def("getContactPose", &ContactMap::getContactPose, ("self"_a, "name"),
-           bp::return_internal_reference<>())
-      .def_readonly("size", &ContactMap::size_)
-      .def_readwrite("contact_states", &ContactMap::contact_states_)
-      .def_readwrite("contact_poses", &ContactMap::contact_poses_)
-      .def_readwrite("contact_names", &ContactMap::contact_names_);
+      .add_property("size", &ContactMap::getSize, "Get map size.")
+      .add_property("contact_states",
+                    bp::make_function(&ContactMap::getContactStates,
+                                      bp::return_internal_reference<>()),
+                    "Get all the states in contact map.")
+      .add_property("contact_poses",
+                    bp::make_function(&ContactMap::getContactPoses,
+                                      bp::return_internal_reference<>()),
+                    "Get all the poses in contact map.");
 }
 
 void exposeCentroidalFunctions() {
@@ -57,12 +57,11 @@ void exposeCentroidalFunctions() {
       CentroidalAccelerationResidualTpl<Scalar>;
   using CentroidalAccelerationData = CentroidalAccelerationDataTpl<Scalar>;
 
-  using CentroidalFrictionConeResidual =
-      CentroidalFrictionConeResidualTpl<Scalar>;
-  using CentroidalFrictionConeData = CentroidalFrictionConeDataTpl<Scalar>;
+  using FrictionConeResidual = FrictionConeResidualTpl<Scalar>;
+  using FrictionConeData = FrictionConeDataTpl<Scalar>;
 
-  using CentroidalWrenchConeResidual = CentroidalWrenchConeResidualTpl<Scalar>;
-  using CentroidalWrenchConeData = CentroidalWrenchConeDataTpl<Scalar>;
+  using WrenchConeResidual = WrenchConeResidualTpl<Scalar>;
+  using WrenchConeData = WrenchConeDataTpl<Scalar>;
 
   using AngularAccelerationResidual = AngularAccelerationResidualTpl<Scalar>;
   using AngularAccelerationData = AngularAccelerationDataTpl<Scalar>;
@@ -70,19 +69,16 @@ void exposeCentroidalFunctions() {
   using CentroidalWrapperResidual = CentroidalWrapperResidualTpl<Scalar>;
   using CentroidalWrapperData = CentroidalWrapperDataTpl<Scalar>;
 
-  PolymorphicMultiBaseVisitor<StageFunction> func_visitor;
-  PolymorphicMultiBaseVisitor<UnaryFunction, StageFunction> unary_visitor;
-
   bp::class_<CentroidalCoMResidual, bp::bases<UnaryFunction>>(
       "CentroidalCoMResidual", "A residual function :math:`r(x) = com(x)` ",
       bp::init<const int, const int, const context::Vector3s &>(
-          ("self"_a, "ndx", "nu", "p_ref")))
-      .def("getReference", &CentroidalCoMResidual::getReference, ("self"_a),
-           bp::return_internal_reference<>(),
+          bp::args("self", "ndx", "nu", "p_ref")))
+      .def("getReference", &CentroidalCoMResidual::getReference,
+           bp::args("self"), bp::return_internal_reference<>(),
            "Get the target Centroidal CoM translation.")
       .def("setReference", &CentroidalCoMResidual::setReference,
-           ("self"_a, "p_new"), "Set the target Centroidal CoM translation.")
-      .def(unary_visitor);
+           bp::args("self", "p_new"),
+           "Set the target Centroidal CoM translation.");
 
   bp::register_ptr_to_python<shared_ptr<CentroidalCoMData>>();
 
@@ -92,12 +88,12 @@ void exposeCentroidalFunctions() {
   bp::class_<LinearMomentumResidual, bp::bases<UnaryFunction>>(
       "LinearMomentumResidual", "A residual function :math:`r(x) = h(x)` ",
       bp::init<const int, const int, const context::Vector3s &>(
-          ("self"_a, "ndx", "nu", "h_ref")))
-      .def("getReference", &LinearMomentumResidual::getReference, ("self"_a),
-           bp::return_internal_reference<>(), "Get the target Linear Momentum.")
+          bp::args("self", "ndx", "nu", "h_ref")))
+      .def("getReference", &LinearMomentumResidual::getReference,
+           bp::args("self"), bp::return_internal_reference<>(),
+           "Get the target Linear Momentum.")
       .def("setReference", &LinearMomentumResidual::setReference,
-           ("self"_a, "h_new"), "Set the target Linear Momentum.")
-      .def(unary_visitor);
+           bp::args("self", "h_new"), "Set the target Linear Momentum.");
 
   bp::register_ptr_to_python<shared_ptr<LinearMomentumData>>();
 
@@ -107,13 +103,12 @@ void exposeCentroidalFunctions() {
   bp::class_<AngularMomentumResidual, bp::bases<UnaryFunction>>(
       "AngularMomentumResidual", "A residual function :math:`r(x) = L(x)` ",
       bp::init<const int, const int, const context::Vector3s &>(
-          ("self"_a, "ndx", "nu", "L_ref")))
-      .def("getReference", &AngularMomentumResidual::getReference, "self"_a,
-           bp::return_internal_reference<>(),
+          bp::args("self", "ndx", "nu", "L_ref")))
+      .def("getReference", &AngularMomentumResidual::getReference,
+           bp::args("self"), bp::return_internal_reference<>(),
            "Get the target Angular Momentum.")
       .def("setReference", &AngularMomentumResidual::setReference,
-           ("self"_a, "L_new"), "Set the target Angular Momentum.")
-      .def(unary_visitor);
+           bp::args("self", "L_new"), "Set the target Angular Momentum.");
 
   bp::register_ptr_to_python<shared_ptr<AngularMomentumData>>();
 
@@ -124,13 +119,11 @@ void exposeCentroidalFunctions() {
       "CentroidalAccelerationResidual",
       "A residual function :math:`r(x) = cddot(x)` ",
       bp::init<const int, const int, const double, const context::Vector3s &,
-               const ContactMap &, const int>(("self"_a, "ndx", "nu", "mass",
-                                               "gravity", "contact_map",
-                                               "force_size")))
+               const ContactMap &, const int>(bp::args(
+          "self", "ndx", "nu", "mass", "gravity", "contact_map", "force_size")))
       .def_readwrite("contact_map",
                      &CentroidalAccelerationResidual::contact_map_)
-      .def(CreateDataPythonVisitor<CentroidalAccelerationResidual>())
-      .def(func_visitor);
+      .def(CreateDataPythonVisitor<CentroidalAccelerationResidual>());
 
   bp::register_ptr_to_python<shared_ptr<CentroidalAccelerationData>>();
 
@@ -138,43 +131,37 @@ void exposeCentroidalFunctions() {
       "CentroidalAccelerationData", "Data Structure for CentroidalAcceleration",
       bp::no_init);
 
-  bp::class_<CentroidalFrictionConeResidual, bp::bases<StageFunction>>(
-      "CentroidalFrictionConeResidual",
+  bp::class_<FrictionConeResidual, bp::bases<StageFunction>>(
+      "FrictionConeResidual",
       "A residual function :math:`r(x) = [fz, mu2 * fz2 - (fx2 + fy2)]` ",
       bp::init<const int, const int, const int, const double, const double>(
-          ("self"_a, "ndx", "nu", "k", "mu", "epsilon")))
-      .def(func_visitor);
+          bp::args("self", "ndx", "nu", "k", "mu", "epsilon")));
 
-  bp::register_ptr_to_python<shared_ptr<CentroidalFrictionConeData>>();
+  bp::register_ptr_to_python<shared_ptr<FrictionConeData>>();
 
-  bp::class_<CentroidalFrictionConeData, bp::bases<StageFunctionData>>(
-      "CentroidalFrictionConeData", "Data Structure for CentroidalFrictionCone",
-      bp::no_init);
+  bp::class_<FrictionConeData, bp::bases<StageFunctionData>>(
+      "FrictionConeData", "Data Structure for FrictionCone", bp::no_init);
 
-  bp::class_<CentroidalWrenchConeResidual, bp::bases<StageFunction>>(
-      "CentroidalWrenchConeResidual",
-      "A residual function :math:`r(x) = [fz, mu2 * fz2 - (fx2 + fy2)]` for "
-      "centroidal case ",
+  bp::class_<WrenchConeResidual, bp::bases<StageFunction>>(
+      "WrenchConeResidual",
+      "A residual function :math:`r(x) = [fz, mu2 * fz2 - (fx2 + fy2)]` ",
       bp::init<const int, const int, const int, const double, const double,
-               const double>(("self"_a, "ndx", "nu", "k", "mu", "L", "W")))
-      .def(func_visitor);
+               const double>(
+          bp::args("self", "ndx", "nu", "k", "mu", "L", "W")));
 
-  bp::register_ptr_to_python<shared_ptr<CentroidalWrenchConeData>>();
+  bp::register_ptr_to_python<shared_ptr<WrenchConeData>>();
 
-  bp::class_<CentroidalWrenchConeData, bp::bases<StageFunctionData>>(
-      "CentroidalWrenchConeData", "Data Structure for CentroidalWrenchCone",
-      bp::no_init);
+  bp::class_<WrenchConeData, bp::bases<StageFunctionData>>(
+      "WrenchConeData", "Data Structure for WrenchCone", bp::no_init);
 
   bp::class_<AngularAccelerationResidual, bp::bases<StageFunction>>(
       "AngularAccelerationResidual",
       "A residual function :math:`r(x) = Ldot(x)` ",
       bp::init<const int, const int, const double, const context::Vector3s &,
-               const ContactMap &, const int>(("self"_a, "ndx", "nu", "mass",
-                                               "gravity", "contact_map",
-                                               "force_size")))
+               const ContactMap &, const int>(bp::args(
+          "self", "ndx", "nu", "mass", "gravity", "contact_map", "force_size")))
       .def_readwrite("contact_map", &AngularAccelerationResidual::contact_map_)
-      .def(CreateDataPythonVisitor<AngularAccelerationResidual>())
-      .def(func_visitor);
+      .def(CreateDataPythonVisitor<AngularAccelerationResidual>());
 
   bp::register_ptr_to_python<shared_ptr<AngularAccelerationData>>();
 
@@ -185,11 +172,10 @@ void exposeCentroidalFunctions() {
   bp::class_<CentroidalWrapperResidual, bp::bases<UnaryFunction>>(
       "CentroidalWrapperResidual",
       "A wrapper for centroidal cost with smooth control",
-      bp::init<xyz::polymorphic<StageFunction>>(("self"_a, "centroidal_cost")))
+      bp::init<shared_ptr<StageFunction>>(bp::args("self", "centroidal_cost")))
       .def_readwrite("centroidal_cost",
                      &CentroidalWrapperResidual::centroidal_cost_)
-      .def(CreateDataPythonVisitor<CentroidalWrapperResidual>())
-      .def(unary_visitor);
+      .def(CreateDataPythonVisitor<CentroidalWrapperResidual>());
 
   bp::register_ptr_to_python<shared_ptr<CentroidalWrapperData>>();
 

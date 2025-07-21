@@ -8,10 +8,8 @@ namespace dynamics {
 
 template <typename Scalar>
 IntegratorMidpointTpl<Scalar>::IntegratorMidpointTpl(
-    const xyz::polymorphic<ContinuousDynamics> &cont_dynamics,
-    const Scalar timestep)
-    : Base(cont_dynamics)
-    , timestep_(timestep) {
+    const shared_ptr<ContinuousDynamics> &cont_dynamics, const Scalar timestep)
+    : Base(cont_dynamics), timestep_(timestep) {
   if (timestep <= 0.) {
     ALIGATOR_RUNTIME_ERROR("Timestep must be positive!");
   }
@@ -72,8 +70,9 @@ void IntegratorMidpointTpl<Scalar>::computeJacobians(
 }
 
 template <typename Scalar>
-auto IntegratorMidpointTpl<Scalar>::createData() const -> shared_ptr<BaseData> {
-  return std::make_shared<Data>(*this);
+shared_ptr<DynamicsDataTpl<Scalar>>
+IntegratorMidpointTpl<Scalar>::createData() const {
+  return std::make_shared<Data>(this);
 }
 
 } // namespace dynamics

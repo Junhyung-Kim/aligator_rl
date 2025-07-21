@@ -4,6 +4,7 @@
 #include "aligator/core/function-abstract.hpp"
 
 #include <pinocchio/multibody/model.hpp>
+#include <pinocchio/algorithm/center-of-mass.hpp>
 
 namespace aligator {
 
@@ -13,8 +14,10 @@ template <typename Scalar> struct CentroidalMomentumDerivativeDataTpl;
  * @brief This residual returns the derivative of centroidal momentum
  * for a kinodynamics model.
  */
+
 template <typename _Scalar>
-struct CentroidalMomentumDerivativeResidualTpl : StageFunctionTpl<_Scalar> {
+struct CentroidalMomentumDerivativeResidualTpl : StageFunctionTpl<_Scalar>,
+                                                 frame_api {
 public:
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
@@ -35,13 +38,24 @@ public:
       const int ndx, const Model &model, const Vector3s &gravity,
       const std::vector<bool> &contact_states,
       const std::vector<pinocchio::FrameIndex> &contact_ids,
-      const int force_size);
+      const int force_size)
+      : Base(ndx, (int)contact_states.size() * force_size + model.nv - 6, 6),
+        pin_model_(model), gravity_(gravity), contact_states_(contact_states),
+        contact_ids_(contact_ids), force_size_(force_size) {
+    mass_ = pinocchio::computeTotalMass(model);
+    if (contact_ids_.size() != contact_states_.size()) {
+      ALIGATOR_DOMAIN_ERROR(
+          fmt::format("contact_ids and contact_states should have same size: "
+                      "now ({} and {}).",
+                      contact_ids_.size(), contact_states_.size()));
+    }
+  }
 
   void evaluate(const ConstVectorRef &x, const ConstVectorRef &u,
-                BaseData &data) const;
+                const ConstVectorRef &, BaseData &data) const;
 
   void computeJacobians(const ConstVectorRef &x, const ConstVectorRef &u,
-                        BaseData &data) const;
+                        const ConstVectorRef &, BaseData &data) const;
 
   shared_ptr<BaseData> createData() const {
     return std::make_shared<Data>(this);
@@ -69,6 +83,8 @@ struct CentroidalMomentumDerivativeDataTpl : StageFunctionDataTpl<Scalar> {
 
 } // namespace aligator
 
+#include "aligator/modelling/multibody/centroidal-momentum-derivative.hxx"
+
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-#include "aligator/modelling/multibody/centroidal-momentum-derivative.txx"
+#include "./centroidal-momentum-derivative.txx"
 #endif

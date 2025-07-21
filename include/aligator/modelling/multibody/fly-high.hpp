@@ -1,9 +1,9 @@
 #pragma once
 
-#ifdef ALIGATOR_WITH_PINOCCHIO
 #include "aligator/core/unary-function.hpp"
 #include "./fwd.hpp"
-#include "aligator/modelling/spaces/multibody.hpp"
+#include <proxsuite-nlp/modelling/spaces/multibody.hpp>
+#include <pinocchio/algorithm/frames-derivatives.hpp>
 
 namespace aligator {
 
@@ -16,11 +16,11 @@ struct FlyHighResidualTpl : UnaryFunctionTpl<_Scalar>, frame_api {
 
   using Base = UnaryFunctionTpl<Scalar>;
   using BaseData = StageFunctionDataTpl<Scalar>;
-  using Model = pinocchio::ModelTpl<Scalar>;
+  using PhaseSpace = proxsuite::nlp::MultibodyPhaseSpace<Scalar>;
 
   struct Data;
 
-  FlyHighResidualTpl(const int ndx, const Model &model,
+  FlyHighResidualTpl(shared_ptr<PhaseSpace> space,
                      const pinocchio::FrameIndex frame_id, Scalar slope,
                      int nu);
 
@@ -31,12 +31,12 @@ struct FlyHighResidualTpl : UnaryFunctionTpl<_Scalar>, frame_api {
     return std::make_shared<Data>(*this);
   }
 
-  const auto &getModel() const { return pin_model_; }
+  const auto &getModel() const { return pmodel_; }
 
   Scalar slope_;
 
 private:
-  Model pin_model_;
+  pinocchio::ModelTpl<Scalar> pmodel_;
 };
 
 template <typename Scalar>
@@ -50,15 +50,11 @@ struct FlyHighResidualTpl<Scalar>::Data : StageFunctionDataTpl<Scalar> {
   using BaseData::nu;
 
   Data(FlyHighResidualTpl const &model)
-      : BaseData(model.ndx1, model.nu, model.nr)
-      , pdata_(model.pin_model_)
-      , d_dq(6, model.pin_model_.nv)
-      , d_dv(6, model.pin_model_.nv)
-      , l_dnu_dq(6, model.pin_model_.nv)
-      , l_dnu_dv(6, model.pin_model_.nv)
-      , o_dv_dq(3, model.pin_model_.nv)
-      , o_dv_dv(3, model.pin_model_.nv)
-      , vxJ(3, model.pin_model_.nv) {
+      : BaseData(model.ndx1, model.nu, model.ndx2, model.nr),
+        pdata_(model.pmodel_), d_dq(6, model.pmodel_.nv),
+        d_dv(6, model.pmodel_.nv), l_dnu_dq(6, model.pmodel_.nv),
+        l_dnu_dv(6, model.pmodel_.nv), o_dv_dq(3, model.pmodel_.nv),
+        o_dv_dv(3, model.pmodel_.nv), vxJ(3, model.pmodel_.nv) {
     d_dq.setZero();
     d_dv.setZero();
     l_dnu_dq.setZero();
@@ -77,7 +73,8 @@ struct FlyHighResidualTpl<Scalar>::Data : StageFunctionDataTpl<Scalar> {
 
 } // namespace aligator
 
+#include "aligator/modelling/multibody/fly-high.hxx"
+
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-#include "aligator/modelling/multibody/fly-high.txx"
-#endif
+#include "./fly-high.txx"
 #endif

@@ -68,7 +68,6 @@ stm = aligator.StageModel(rcost, dyn_model)
 if args.bounds:
     umax = rmodel.effortLimit
     umin = -umax
-    print(f"Effort limit: {umax}")
     # fun: u -> u
     ctrl_fn = aligator.ControlErrorResidual(space.ndx, np.zeros(nu))
     stm.addConstraint(ctrl_fn, constraints.BoxConstraint(umin, umax))
@@ -84,15 +83,14 @@ problem = aligator.TrajOptProblem(x0, stages, term_cost)
 
 TOL = 1e-5
 mu_init = 1e-3
+rho_init = 0.0
 max_iters = 200
 verbose = aligator.VerboseLevel.VERBOSE
-solver = aligator.SolverProxDDP(TOL, mu_init, verbose=verbose)
+solver = aligator.SolverProxDDP(TOL, mu_init, rho_init, verbose=verbose)
 solver.rollout_type = aligator.ROLLOUT_NONLINEAR
 # solver = aligator.SolverFDDP(TOL, verbose=verbose)
 solver.max_iters = max_iters
-solver.sa_strategy = (
-    aligator.SA_LINESEARCH_NONMONOTONE
-)  # FILTER or LINESEARCH_ARMIJO or LINESEARCH_NONMONOTONE
+solver.sa_strategy = aligator.SA_LINESEARCH  # FILTER or LINESEARCH
 solver.setup(problem)
 
 u0 = compute_quasistatic(rmodel, rdata, x0, acc=np.zeros(nv))
@@ -121,13 +119,12 @@ plt.subplot(122)
 times = np.linspace(0.0, Tf, nsteps + 1)
 us_opt = np.array(results.us)
 ls = plt.plot(times[1:], results.us)
-if args.bounds:
-    mask_where_ctrl_saturate = np.any((us_opt <= umin) | (us_opt >= umax), axis=0)
-    idx_hit = np.argwhere(mask_where_ctrl_saturate).flatten()
-    if len(idx_hit) > 0:
-        ls[idx_hit[0]].set_label("u{}".format(idx_hit[0]))
-        plt.hlines(umin[idx_hit], *times[[0, -1]], colors="r", linestyles="--")
-        plt.hlines(umax[idx_hit], *times[[0, -1]], colors="b", linestyles="--")
+mask_where_ctrl_saturate = np.any((us_opt <= umin) | (us_opt >= umax), axis=0)
+idx_hit = np.argwhere(mask_where_ctrl_saturate).flatten()
+if len(idx_hit) > 0:
+    ls[idx_hit[0]].set_label("u{}".format(idx_hit[0]))
+    plt.hlines(umin[idx_hit], *times[[0, -1]], colors="r", linestyles="--")
+    plt.hlines(umax[idx_hit], *times[[0, -1]], colors="b", linestyles="--")
 plt.title("Controls trajectory")
 plt.legend()
 plt.tight_layout()

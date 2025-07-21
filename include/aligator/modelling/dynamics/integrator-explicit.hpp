@@ -30,15 +30,10 @@ struct ExplicitIntegratorAbstractTpl : ExplicitDynamicsModelTpl<_Scalar> {
   using Base::space_next_;
   using Manifold = ManifoldAbstractTpl<Scalar>;
 
-  xyz::polymorphic<ODEType> ode_;
-
-  template <typename U> U *getDynamics() { return dynamic_cast<U *>(&*ode_); }
-  template <typename U> const U *getDynamics() const {
-    return dynamic_cast<const U *>(&*ode_);
-  }
+  shared_ptr<ODEType> ode_;
 
   explicit ExplicitIntegratorAbstractTpl(
-      const xyz::polymorphic<ODEType> &cont_dynamics);
+      const shared_ptr<ODEType> &cont_dynamics);
   virtual ~ExplicitIntegratorAbstractTpl() = default;
 
   shared_ptr<DynamicsDataTpl<Scalar>> createData() const;
@@ -48,7 +43,7 @@ template <typename _Scalar>
 struct ExplicitIntegratorDataTpl : ExplicitDynamicsDataTpl<_Scalar> {
   using Scalar = _Scalar;
   using Base = ExplicitDynamicsDataTpl<Scalar>;
-  using ODEData = ContinuousDynamicsDataTpl<Scalar>;
+  using ODEData = ODEDataTpl<Scalar>;
   shared_ptr<ODEData> continuous_data;
 
   explicit ExplicitIntegratorDataTpl(
@@ -61,6 +56,8 @@ struct ExplicitIntegratorDataTpl : ExplicitDynamicsDataTpl<_Scalar> {
 
 } // namespace dynamics
 } // namespace aligator
+
+#include "aligator/modelling/dynamics/integrator-explicit.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "aligator/modelling/dynamics/integrator-explicit.txx"

@@ -8,9 +8,8 @@ namespace dynamics {
 
 template <typename Scalar>
 IntegratorSemiImplEulerTpl<Scalar>::IntegratorSemiImplEulerTpl(
-    const xyz::polymorphic<ODEType> &cont_dynamics, const Scalar timestep)
-    : Base(cont_dynamics)
-    , timestep_(timestep) {
+    const shared_ptr<ODEType> &cont_dynamics, const Scalar timestep)
+    : Base(cont_dynamics), timestep_(timestep) {
   assert(((this->ndx1) % 2 == 0) &&
          "IntegratorSemiImplEuler must be used with even ndx.");
 }
@@ -20,8 +19,8 @@ void IntegratorSemiImplEulerTpl<Scalar>::forward(
     const ConstVectorRef &x, const ConstVectorRef &u,
     ExplicitDynamicsDataTpl<Scalar> &data) const {
   Data &d = static_cast<Data &>(data);
-  ContinuousDynamicsDataTpl<Scalar> &cdata =
-      static_cast<ContinuousDynamicsDataTpl<Scalar> &>(*d.continuous_data);
+  ODEDataTpl<Scalar> &cdata =
+      static_cast<ODEDataTpl<Scalar> &>(*d.continuous_data);
   this->ode_->forward(x, u, cdata);
   int ndx = this->ndx1;
   const int ndx_2 = ndx / 2;
@@ -36,8 +35,8 @@ void IntegratorSemiImplEulerTpl<Scalar>::dForward(
     const ConstVectorRef &x, const ConstVectorRef &u,
     ExplicitDynamicsDataTpl<Scalar> &data) const {
   Data &d = static_cast<Data &>(data);
-  ContinuousDynamicsDataTpl<Scalar> &cdata =
-      static_cast<ContinuousDynamicsDataTpl<Scalar> &>(*d.continuous_data);
+  ODEDataTpl<Scalar> &cdata =
+      static_cast<ODEDataTpl<Scalar> &>(*d.continuous_data);
   int ndx = this->ndx1;
   const int ndx_2 = ndx / 2;
   const auto &space = this->space_next();
@@ -67,9 +66,8 @@ void IntegratorSemiImplEulerTpl<Scalar>::dForward(
 template <typename Scalar>
 IntegratorSemiImplDataTpl<Scalar>::IntegratorSemiImplDataTpl(
     const IntegratorSemiImplEulerTpl<Scalar> *integrator)
-    : Base(integrator)
-    , Jtmp_xnext2(integrator->ndx1, integrator->ndx1)
-    , Jtmp_u(integrator->ndx1, integrator->nu) {
+    : Base(integrator), Jtmp_xnext2(integrator->ndx1, integrator->ndx1),
+      Jtmp_u(integrator->ndx1, integrator->nu) {
   Jtmp_xnext2.setZero();
   Jtmp_u.setZero();
 }

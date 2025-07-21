@@ -1,4 +1,4 @@
-/// @copyright Copyright (C) 2023-2024 LAAS-CNRS, INRIA
+/// @copyright Copyright (C) 2023 LAAS-CNRS, INRIA
 #include "./test_util.hpp"
 #include "aligator/gar/utils.hpp"
 
@@ -10,56 +10,54 @@ MatrixXs sampleWishartDistributedMatrix(uint n, uint p) {
   return root * root.transpose();
 };
 
-knot_t generate_knot(uint nx, uint nu, uint nth, bool singular,
-                     const aligator::polymorphic_allocator &alloc) {
+problem_t generate_problem(const ConstVectorRef &x0, uint horz, uint nx,
+                           uint nu, uint nth) {
+  assert(x0.size() == nx);
+
+  problem_t::KnotVector knots(horz + 1);
   uint wishartDof = nx + nu + 1;
-  knot_t out(nx, nu, 0, nx, nth, alloc);
 
-  MatrixXs _qsr = sampleWishartDistributedMatrix(nx + nu, wishartDof);
+  auto gen = [&](uint nu, bool sing = false) {
+    knot_t out(nx, nu, 0);
+    out.addParameterization(nth);
 
-  auto Q = out.Q.to_map();
-  Q = _qsr.topLeftCorner(nx, nx);
-  out.S = _qsr.topRightCorner(nx, nu);
-  if (singular) {
-    auto n = nx / 2;
-    Q.topLeftCorner(n, n).setZero();
-  }
-  out.R = _qsr.bottomRightCorner(nu, nu);
-  out.q = VectorXs::NullaryExpr(nx, normal_unary_op{});
-  out.r = VectorXs::NullaryExpr(nu, normal_unary_op{});
+    MatrixXs _qsr = sampleWishartDistributedMatrix(nx + nu, wishartDof);
 
-  out.A = MatrixXs::NullaryExpr(nx, nx, normal_unary_op{});
-  out.B.setRandom();
-  out.E = MatrixXs::NullaryExpr(nx, nx, normal_unary_op{});
-  out.E.to_map() *= 1000;
-  out.f = VectorXs::NullaryExpr(nx, normal_unary_op{100.});
+    out.Q = _qsr.topLeftCorner(nx, nx);
+    // out.S = _qsr.topRightCorner(nx, nu);
+    if (sing) {
+      auto n = nx / 2;
+      if (nx <= 6)
+        n = nx / 2;
+      out.Q.topLeftCorner(n, n).setZero();
+    }
+    out.R = _qsr.bottomRightCorner(nu, nu);
+    out.q.head(nx) = VectorXs::NullaryExpr(nx, normal_unary_op{});
+    out.r.head(nu) = VectorXs::NullaryExpr(nu, normal_unary_op{});
 
-  if (nth > 0) {
+    out.A = MatrixXs::NullaryExpr(nx, nx, normal_unary_op{});
+    out.B.setRandom();
+    out.E = out.E.NullaryExpr(nx, nx, normal_unary_op{});
+    out.E *= 1000;
+    // out.E.setIdentity();
+    // out.E *= -1;
+    out.f.head(nx) = VectorXs::NullaryExpr(nx, normal_unary_op{});
+
     out.Gx = MatrixXs::NullaryExpr(nx, nth, normal_unary_op{});
     out.Gu = MatrixXs::NullaryExpr(nu, nth, normal_unary_op{});
     out.Gth = sampleWishartDistributedMatrix(nth, nth + 2);
     out.gamma = VectorXs::NullaryExpr(nth, normal_unary_op{});
-  }
 
-  assert(out.get_allocator() == alloc);
-  return out;
-}
+    return out;
+  };
 
-problem_t generate_problem(const ConstVectorRef &x0, uint horz, uint nx,
-                           uint nu, uint nth) {
-  assert(x0.size() == nx);
-  aligator::polymorphic_allocator alloc{};
-
-  problem_t::KnotVector knots{alloc};
-  knots.reserve(horz + 1);
-
-  auto knb = generate_knot(nx, nu, nth, true, alloc);
+  auto knb = gen(nu, true);
   for (uint i = 0; i < horz; i++) {
-    knots.push_back(knb);
+    knots[i] = knb;
   }
-  knots.push_back(generate_knot(nx, 0, nth, false, alloc));
+  knots[horz] = gen(0); // terminal node
 
-  problem_t prob(std::move(knots), nx);
+  problem_t prob(knots, nx);
   prob.g0 = -x0;
   prob.G0.setIdentity();
   return prob;
@@ -69,8 +67,8 @@ KktError computeKktError(const problem_t &problem, const VectorOfVectors &xs,
                          const VectorOfVectors &us, const VectorOfVectors &vs,
                          const VectorOfVectors &lbdas,
                          const std::optional<ConstVectorRef> &theta_,
-                         const double mudyn, const double mueq, bool verbose) {
+                         const double mudyn, const double mueq) {
   auto r = aligator::gar::lqrComputeKktError(problem, xs, us, vs, lbdas, mudyn,
-                                             mueq, theta_, verbose);
+                                             mueq, theta_, true);
   return {r[0], r[1], r[2]};
 }

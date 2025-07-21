@@ -3,12 +3,9 @@
 
 #include "aligator/modelling/dynamics/ode-abstract.hpp"
 
-#ifdef ALIGATOR_WITH_PINOCCHIO
-
-#include <Eigen/LU>
-#include "aligator/modelling/spaces/multibody.hpp"
+#include <Eigen/src/LU/PartialPivLU.h>
+#include <proxsuite-nlp/modelling/spaces/multibody.hpp>
 #include <pinocchio/multibody/model.hpp>
-#include <pinocchio/multibody/data.hpp>
 
 namespace aligator {
 namespace dynamics {
@@ -34,16 +31,17 @@ struct KinodynamicsFwdDynamicsTpl : ODEAbstractTpl<_Scalar> {
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = ODEAbstractTpl<Scalar>;
-  using BaseData = ContinuousDynamicsDataTpl<Scalar>;
+  using BaseData = ODEDataTpl<Scalar>;
   using ContDataAbstract = ContinuousDynamicsDataTpl<Scalar>;
   using Data = KinodynamicsFwdDataTpl<Scalar>;
-  using Manifold = MultibodyPhaseSpace<Scalar>;
+  using Manifold = proxsuite::nlp::MultibodyPhaseSpace<Scalar>;
+  using ManifoldPtr = shared_ptr<Manifold>;
   using Model = pinocchio::ModelTpl<Scalar>;
   using Matrix3s = Eigen::Matrix<Scalar, 3, 3>;
 
   using Base::nu_;
 
-  Manifold space_;
+  ManifoldPtr space_;
   Model pin_model_;
   double mass_;
   Vector3s gravity_;
@@ -52,10 +50,10 @@ struct KinodynamicsFwdDynamicsTpl : ODEAbstractTpl<_Scalar> {
   std::vector<bool> contact_states_;
   std::vector<pinocchio::FrameIndex> contact_ids_;
 
-  const Manifold &space() const { return space_; }
+  const Manifold &space() const { return *space_; }
 
   KinodynamicsFwdDynamicsTpl(
-      const Manifold &state, const Model &model, const Vector3s &gravity,
+      const ManifoldPtr &state, const Model &model, const Vector3s &gravity,
       const std::vector<bool> &contact_states,
       const std::vector<pinocchio::FrameIndex> &contact_ids,
       const int force_size);
@@ -68,9 +66,8 @@ struct KinodynamicsFwdDynamicsTpl : ODEAbstractTpl<_Scalar> {
   shared_ptr<ContDataAbstract> createData() const;
 };
 
-template <typename Scalar>
-struct KinodynamicsFwdDataTpl : ContinuousDynamicsDataTpl<Scalar> {
-  using Base = ContinuousDynamicsDataTpl<Scalar>;
+template <typename Scalar> struct KinodynamicsFwdDataTpl : ODEDataTpl<Scalar> {
+  using Base = ODEDataTpl<Scalar>;
   using PinData = pinocchio::DataTpl<Scalar>;
   using VectorXs = typename math_types<Scalar>::VectorXs;
   using Matrix6Xs = typename math_types<Scalar>::Matrix6Xs;
@@ -98,12 +95,7 @@ struct KinodynamicsFwdDataTpl : ContinuousDynamicsDataTpl<Scalar> {
   KinodynamicsFwdDataTpl(const KinodynamicsFwdDynamicsTpl<Scalar> *model);
 };
 
-#ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-extern template struct KinodynamicsFwdDynamicsTpl<context::Scalar>;
-extern template struct KinodynamicsFwdDataTpl<context::Scalar>;
-#endif
-
 } // namespace dynamics
 } // namespace aligator
 
-#endif
+#include "aligator/modelling/dynamics/kinodynamics-fwd.hxx"

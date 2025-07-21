@@ -12,21 +12,20 @@ static constexpr int Options = 0;
 ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
 
 using Manifold = ManifoldAbstractTpl<Scalar>;
-using VectorSpace = VectorSpaceTpl<Scalar, Eigen::Dynamic>;
 
+using BCLParams = BCLParamsTpl<Scalar>;
 using StageFunction = StageFunctionTpl<Scalar>;
 using UnaryFunction = UnaryFunctionTpl<Scalar>;
 using StageFunctionData = StageFunctionDataTpl<Scalar>;
-using StageConstraint ALIGATOR_DEPRECATED = StageConstraintTpl<Scalar>;
+using StageConstraint = StageConstraintTpl<Scalar>;
 
-using ConstraintSet = ConstraintSetTpl<Scalar>;
+using ConstraintSet = ConstraintSetBase<Scalar>;
 
 using CostBase ALIGATOR_DEPRECATED_MESSAGE(
     "Use the CostAbstract typedef instead.") = CostAbstractTpl<Scalar>;
 using CostAbstract = CostAbstractTpl<Scalar>;
 using CostData = CostDataAbstractTpl<Scalar>;
 using DynamicsModel = DynamicsModelTpl<Scalar>;
-using DynamicsData = DynamicsDataTpl<Scalar>;
 using StageModel = StageModelTpl<Scalar>;
 using StageData = StageDataTpl<Scalar>;
 

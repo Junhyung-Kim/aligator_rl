@@ -2,19 +2,17 @@
 
 #include "aligator/context.hpp"
 
-#include <pinocchio/fwd.hpp>
+#include <proxsuite-nlp/modelling/spaces/multibody.hpp>
 
 namespace aligator {
-template <typename> struct MultibodyConfiguration;
-template <typename> struct MultibodyPhaseSpace;
-
 namespace context {
 using PinModel = pinocchio::ModelTpl<Scalar, Options>;
 using PinData = pinocchio::DataTpl<Scalar, Options>;
-
+#ifdef ALIGATOR_PINOCCHIO_V3
 using RCM = pinocchio::RigidConstraintModelTpl<Scalar, Options>;
 using RCD = pinocchio::RigidConstraintDataTpl<Scalar, Options>;
-using MultibodyConfiguration = MultibodyConfiguration<Scalar>;
-using MultibodyPhaseSpace = MultibodyPhaseSpace<Scalar>;
+#endif
+using MultibodyConfiguration = proxsuite::nlp::MultibodyConfiguration<Scalar>;
+using MultibodyPhaseSpace = proxsuite::nlp::MultibodyPhaseSpace<Scalar>;
 } // namespace context
 } // namespace aligator

@@ -4,7 +4,6 @@
 #include "aligator/core/traj-opt-problem.hpp"
 #include "aligator/core/traj-opt-data.hpp"
 #include "aligator/core/cost-abstract.hpp"
-#include <eigenpy/deprecation-policy.hpp>
 
 namespace aligator {
 namespace python {
@@ -19,31 +18,27 @@ void exposeProblem() {
   using context::TrajOptProblem;
   using context::UnaryFunction;
 
-  using PolyUnaryFunction = xyz::polymorphic<UnaryFunction>;
-  using PolyFunction = xyz::polymorphic<context::StageFunction>;
-  using PolyStage = xyz::polymorphic<StageModel>;
-  using PolyCost = xyz::polymorphic<CostAbstract>;
-  using PolyManifold = xyz::polymorphic<Manifold>;
-  using PolySet = xyz::polymorphic<context::ConstraintSet>;
-
   bp::class_<TrajOptProblem>("TrajOptProblem", "Define a shooting problem.",
                              bp::no_init)
-      .def(
-          bp::init<PolyUnaryFunction, const std::vector<PolyStage> &, PolyCost>(
-              "Constructor adding the initial constraint explicitly.",
-              ("self"_a, "init_constraint", "stages", "term_cost")))
-      .def(bp::init<ConstVectorRef, const std::vector<PolyStage> &, PolyCost>(
+      .def(bp::init<shared_ptr<UnaryFunction>,
+                    const std::vector<shared_ptr<StageModel>> &,
+                    shared_ptr<CostAbstract>>(
+          "Constructor adding the initial constraint explicitly.",
+          ("self"_a, "init_constraint", "stages", "term_cost")))
+      .def(bp::init<ConstVectorRef, const std::vector<shared_ptr<StageModel>> &,
+                    shared_ptr<CostAbstract>>(
           "Constructor for an initial value problem.",
           ("self"_a, "x0", "stages", "term_cost")))
-      .def(bp::init<PolyUnaryFunction, PolyCost>(
+      .def(bp::init<shared_ptr<UnaryFunction>, shared_ptr<CostAbstract>>(
           "Constructor adding the initial constraint explicitly (without "
           "stages).",
           ("self"_a, "init_constraint", "term_cost")))
-      .def(bp::init<ConstVectorRef, const int, PolyManifold, PolyCost>(
+      .def(bp::init<ConstVectorRef, const int, shared_ptr<Manifold>,
+                    shared_ptr<CostAbstract>>(
           "Constructor for an initial value problem (without pre-allocated "
           "stages).",
           ("self"_a, "x0", "nu", "space", "term_cost")))
-      .def<void (TrajOptProblem::*)(const PolyStage &)>(
+      .def<void (TrajOptProblem::*)(const shared_ptr<StageModel> &)>(
           "addStage", &TrajOptProblem::addStage, ("self"_a, "new_stage"),
           "Add a stage to the problem.")
       .def_readonly("stages", &TrajOptProblem::stages_,
@@ -53,26 +48,14 @@ void exposeProblem() {
       .def_readwrite("term_constraints", &TrajOptProblem::term_cstrs_,
                      "Set of terminal constraints.")
       .add_property("num_steps", &TrajOptProblem::numSteps,
-                    "Number of stages in the problem.CostPtr")
+                    "Number of stages in the problem.")
       .add_property("x0_init", &TrajOptProblem::getInitState,
                     &TrajOptProblem::setInitState, "Initial state.")
-      .add_property("init_constraint", &TrajOptProblem::init_constraint_,
+      .add_property("init_constraint", &TrajOptProblem::init_condition_,
                     "Get initial state constraint.")
-      .def<void (TrajOptProblem::*)(const context::StageConstraint &)>(
-          "addTerminalConstraint", &TrajOptProblem::addTerminalConstraint,
-          eigenpy::deprecated_member<>("This method is deprecated (because "
-                                       "StageConstraint has been deprecated)."),
-          ("self"_a, "constraint"), "Add a terminal constraint.")
-      .def<void (TrajOptProblem::*)(const PolyFunction &, const PolySet &)>(
-          "addTerminalConstraint", &TrajOptProblem::addTerminalConstraint,
-          ("self"_a, "func", "set"), "Add a terminal constraint.")
+      .def("addTerminalConstraint", &TrajOptProblem::addTerminalConstraint,
+           ("self"_a, "constraint"), "Add a terminal constraint.")
       .def("removeTerminalConstraint",
-           &TrajOptProblem::removeTerminalConstraints,
-           eigenpy::deprecated_member<>(
-               "This method is deprecated (due to a typo which was fixed). Use "
-               "removeTerminalConstraints instead."),
-           ("self"_a), "Remove all terminal constraints.")
-      .def("removeTerminalConstraints",
            &TrajOptProblem::removeTerminalConstraints, "self"_a,
            "Remove all terminal constraints.")
       .def("evaluate", &TrajOptProblem::evaluate,
@@ -85,13 +68,9 @@ void exposeProblem() {
       .def("replaceStageCircular", &TrajOptProblem::replaceStageCircular,
            ("self"_a, "model"),
            "Circularly replace the last stage in the problem, dropping the "
-           "first stage.")
-      .def("checkIntegrity", &TrajOptProblem::checkIntegrity, ("self"_a));
+           "first stage.");
 
-  bp::def("computeTrajectoryCost", computeTrajectoryCost<Scalar>,
-          ("problem_data"_a),
-          "Compute trajectory cost (call evaluate() first!)");
-
+  bp::register_ptr_to_python<shared_ptr<TrajOptData>>();
   bp::class_<TrajOptData>(
       "TrajOptData", "Data struct for shooting problems.",
       bp::init<const TrajOptProblem &>(("self"_a, "problem")))

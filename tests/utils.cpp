@@ -1,6 +1,7 @@
 #include "aligator/utils/newton-raphson.hpp"
-#include "aligator/core/vector-space.hpp"
-#include <aligator/fmt-eigen.hpp>
+
+#include <proxsuite-nlp/modelling/spaces/vector-space.hpp>
+#include <proxsuite-nlp/fmt-eigen.hpp>
 
 #include <boost/test/unit_test.hpp>
 
@@ -23,7 +24,7 @@ BOOST_AUTO_TEST_CASE(newton_raphson) {
 
   VectorXs xinit = 0.1 * VectorXs::Constant(nx, 0.1);
   VectorXs xout(xinit);
-  aligator::VectorSpaceTpl<Scalar> space(nx);
+  proxsuite::nlp::VectorSpaceTpl<Scalar> space(nx);
   // buffer for evaluating the function
   VectorXs err(nx);
   err.setZero();

@@ -1,91 +1,42 @@
 /// @file fwd.hpp
 /// @brief Forward declarations.
-/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, 2022-2025 INRIA
+/// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 #pragma once
 
-#ifdef EIGEN_DEFAULT_IO_FORMAT
-#undef EIGEN_DEFAULT_IO_FORMAT
+#include <proxsuite-nlp/fwd.hpp>
+
+#ifdef ALIGATOR_WITH_PINOCCHIO
+#include <pinocchio/config.hpp>
+#if PINOCCHIO_VERSION_AT_LEAST(2, 9, 2)
+#define ALIGATOR_PINOCCHIO_V3
 #endif
-#define EIGEN_DEFAULT_IO_FORMAT                                                \
-  Eigen::IOFormat(Eigen::StreamPrecision, 0, ",", "\n", "[", "]")
+#endif
 
 #include "aligator/math.hpp"
-#include "aligator/utils/exceptions.hpp"
+#include "aligator/macros.hpp"
+#include "aligator/eigen-macros.hpp"
 #include "aligator/config.hpp"
 #include "aligator/deprecated.hpp"
 
-#include <memory>
-
-#define ALIGATOR_RAISE_IF_NAN(value)                                           \
-  if (::aligator::math::check_value(value))                                    \
-  ALIGATOR_RUNTIME_ERROR("Encountered NaN.\n")
-
-#define ALIGATOR_RAISE_IF_NAN_NAME(value, name)                                \
-  if (::aligator::math::check_value(value))                                    \
-  ALIGATOR_RUNTIME_ERROR("Encountered NaN for variable {:s}\n", name)
-
-#define ALIGATOR_INLINE inline __attribute__((always_inline))
-
-/// \brief macros for pragma push/pop/ignore deprecated warnings
-#if defined(__GNUC__) || defined(__clang__)
-#define ALIGATOR_COMPILER_DIAGNOSTIC_PUSH ALIGATOR_PRAGMA(GCC diagnostic push)
-#define ALIGATOR_COMPILER_DIAGNOSTIC_POP ALIGATOR_PRAGMA(GCC diagnostic pop)
-#if defined(__clang__)
-#define ALIGATOR_COMPILER_DIAGNOSTIC_IGNORED_DELETE_NON_ABSTRACT_NON_VIRTUAL_DTOR
-ALIGATOR_PRAGMA(GCC diagnostic ignored "-Wdelete-non-abstract-non-virtual-dtor")
-#else
-#define ALIGATOR_COMPILER_DIAGNOSTIC_IGNORED_DELETE_NON_ABSTRACT_NON_VIRTUAL_DTOR
-#endif
-#elif defined(WIN32)
-#define ALIGATOR_COMPILER_DIAGNOSTIC_PUSH _Pragma("warning(push)")
-#define ALIGATOR_COMPILER_DIAGNOSTIC_POP _Pragma("warning(pop)")
-#define ALIGATOR_COMPILER_DIAGNOSTIC_IGNORED_DELETE_NON_ABSTRACT_NON_VIRTUAL_DTOR
-#else
-#define ALIGATOR_COMPILER_DIAGNOSTIC_PUSH
-#define ALIGATOR_COMPILER_DIAGNOSTIC_POP
-#define ALIGATOR_COMPILER_DIAGNOSTIC_IGNORED_DEPRECECATED_DECLARATIONS
-#define ALIGATOR_COMPILER_DIAGNOSTIC_IGNORED_VARIADIC_MACROS
-#define ALIGATOR_COMPILER_DIAGNOSTIC_IGNORED_SELF_ASSIGN_OVERLOADED
-#define ALIGATOR_COMPILER_DIAGNOSTIC_IGNORED_MAYBE_UNINITIALIZED
-#endif // __GNUC__ || __clang__
-
-namespace xyz {
-// fwd-decl for boost override later
-template <class T, class A> class polymorphic;
-} // namespace xyz
-
-/// The following overload for get_pointer is defined here, to avoid conflicts
-/// with other Boost libraries using get_pointer() without seeing this overload
-/// if included later.
-
 /// @brief  Main package namespace.
 namespace aligator {
-
-template <typename Base, typename U, typename A = std::allocator<U>>
-using is_polymorphic_of = std::is_same<std::decay_t<U>, xyz::polymorphic<U, A>>;
-
-template <typename Base, typename U, typename A = std::allocator<U>>
-constexpr bool is_polymorphic_of_v = is_polymorphic_of<Base, U, A>::value;
+/// TYPEDEFS FROM PROXNLP
 
 // NOLINTBEGIN(misc-unused-using-decls)
 
-// fwd ManifoldAbstractTpl
-template <typename Scalar> struct ManifoldAbstractTpl;
-
-// fwd VectorSpaceTpl
-template <typename Scalar, int Dim = Eigen::Dynamic> struct VectorSpaceTpl;
-
-// fwd ConstraintSetTpl
-template <typename Scalar> struct ConstraintSetTpl;
-
-/// @brief Verbosity level.
-enum VerboseLevel { QUIET = 0, VERBOSE = 1, VERYVERBOSE = 2 };
+// Use the shared_ptr used in proxsuite-nlp.
+using proxsuite::nlp::BCLParamsTpl;
+using proxsuite::nlp::ConstraintSetBase;
+using proxsuite::nlp::ManifoldAbstractTpl;
+// Use the math_types template from proxsuite-nlp.
+using proxsuite::nlp::VerboseLevel;
 
 using VerboseLevel::QUIET;
 using VerboseLevel::VERBOSE;
 using VerboseLevel::VERYVERBOSE;
 
 using std::shared_ptr;
+using std::unique_ptr;
 
 // NOLINTEND(misc-unused-using-decls)
 
@@ -108,7 +59,7 @@ template <typename Scalar> struct CostDataAbstractTpl;
 template <typename Scalar> struct DynamicsModelTpl;
 
 // fwd DynamicsDataTpl
-template <typename Scalar> struct DynamicsDataTpl;
+template <typename Scalar> using DynamicsDataTpl = StageFunctionDataTpl<Scalar>;
 
 // fwd StageConstraintTpl
 template <typename Scalar> struct StageConstraintTpl;
@@ -173,5 +124,14 @@ using StdVectorEigenAligned ALIGATOR_DEPRECATED_MESSAGE(
     "no longer useful. Please use std::vector<T> instead, this typedef will "
     "change to be an alias of that of the future, then will be removed.") =
     std::vector<T, Eigen::aligned_allocator<T>>;
+
+template <typename T, typename... Args>
+ALIGATOR_DEPRECATED_MESSAGE(
+    "Aligator now requires C++17 and the Eigen::aligned_allocator<T> class is "
+    "no longer useful. This function is now just an alias for "
+    "std::make_shared, and will be removed in the future.")
+inline auto allocate_shared_eigen_aligned(Args &&...args) {
+  return std::make_shared<T>(std::forward<Args>(args)...);
+}
 
 } // namespace aligator

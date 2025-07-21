@@ -2,8 +2,7 @@
 
 #include "aligator/core/function-abstract.hpp"
 #include "aligator/core/unary-function.hpp"
-#include "aligator/core/vector-space.hpp"
-#include "aligator/third-party/polymorphic_cxx14.h"
+#include <proxsuite-nlp/modelling/spaces/vector-space.hpp>
 
 namespace aligator {
 
@@ -24,98 +23,81 @@ struct StateOrControlErrorResidual<_Scalar, 0> : UnaryFunctionTpl<_Scalar> {
   ALIGATOR_UNARY_FUNCTION_INTERFACE(Scalar);
   using Data = StageFunctionDataTpl<Scalar>;
   using Manifold = ManifoldAbstractTpl<Scalar>;
-  using VectorSpace = VectorSpaceTpl<Scalar, Eigen::Dynamic>;
-  using PolyManifold = xyz::polymorphic<Manifold>;
+  using VectorSpace = proxsuite::nlp::VectorSpaceTpl<Scalar, Eigen::Dynamic>;
 
-  PolyManifold space_;
+  shared_ptr<Manifold> space_;
   VectorXs target_;
 
-  StateOrControlErrorResidual(const PolyManifold &xspace, const int nu,
+  StateOrControlErrorResidual(const shared_ptr<Manifold> &xspace, const int nu,
                               const ConstVectorRef &target)
-      : Base(xspace->ndx(), nu, xspace->ndx())
-      , space_(xspace)
-      , target_(target) {
-    validate();
-  }
-
-  template <typename U, typename std::enable_if_t<
-                            is_polymorphic_of_v<Manifold, U>, int> = 0>
-  StateOrControlErrorResidual(U &&xspace, const int nu,
-                              const ConstVectorRef &target)
-      : Base(xspace.ndx(), nu, xspace.ndx())
-      , space_{std::forward<U>(xspace)}
-      , target_(target) {
-    validate();
-  }
-
-  void evaluate(const ConstVectorRef &x, Data &data) const override {
-    space_->difference(target_, x, data.value_);
-  }
-
-  void computeJacobians(const ConstVectorRef &x, Data &data) const override {
-    space_->Jdifference(target_, x, data.Jx_, 1);
-  }
-
-protected:
-  void validate() const {
-    if (!space_->isNormalized(target_)) {
+      : Base(xspace->ndx(), nu, xspace->ndx()), space_(xspace),
+        target_(target) {
+    if (!xspace->isNormalized(target)) {
       ALIGATOR_RUNTIME_ERROR(
           "Target parameter invalid (not a viable element of state manifold.)");
     }
+  }
+
+  void evaluate(const ConstVectorRef &x, Data &data) const override {
+    space_->difference(x, target_, data.value_);
+  }
+
+  void computeJacobians(const ConstVectorRef &x, Data &data) const override {
+    space_->Jdifference(x, target_, data.Jx_, 0);
   }
 };
 
 template <typename _Scalar, unsigned int arg>
 struct StateOrControlErrorResidual : StageFunctionTpl<_Scalar> {
-  static_assert(arg == 1, "arg value must be 1");
+  static_assert(arg > 0 && arg <= 2, "arg value must be 1 or 2!");
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = StageFunctionTpl<Scalar>;
   using Data = StageFunctionDataTpl<Scalar>;
   using Manifold = ManifoldAbstractTpl<Scalar>;
-  using VectorSpace = VectorSpaceTpl<Scalar, Eigen::Dynamic>;
+  using VectorSpace = proxsuite::nlp::VectorSpaceTpl<Scalar, Eigen::Dynamic>;
 
-  xyz::polymorphic<Manifold> space_;
+  shared_ptr<Manifold> space_;
   VectorXs target_;
+
+  /// @brief Constructor using the state space, control dimension and state
+  /// target.
+  template <unsigned int N = arg, typename = std::enable_if_t<N == 2>>
+  StateOrControlErrorResidual(const shared_ptr<Manifold> &xspace, const int nu,
+                              const ConstVectorRef &target);
 
   /// @brief Constructor using the state space dimension, control manifold and
   ///        control target.
-  template <typename U,
-            typename = std::enable_if_t<!is_polymorphic_of_v<Manifold, U>>>
-  StateOrControlErrorResidual(const int ndx, U &&uspace,
+  template <unsigned int N = arg, typename = std::enable_if_t<N == 1>>
+  StateOrControlErrorResidual(const int ndx, const shared_ptr<Manifold> &uspace,
                               const ConstVectorRef &target)
-      : Base(ndx, uspace.nx(), uspace.ndx())
-      , space_(std::forward<U>(uspace))
-      , target_(target) {
-    validate();
+      : Base(ndx, uspace->nx(), uspace->ndx()), space_(uspace),
+        target_(target) {
+    check_target_viable();
   }
-
-  StateOrControlErrorResidual(const int ndx,
-                              const xyz::polymorphic<Manifold> &uspace,
-                              const ConstVectorRef &target)
-      : Base(ndx, uspace->nx(), uspace->ndx())
-      , space_(uspace)
-      , target_(target) {
-    validate();
-  }
-
-  StateOrControlErrorResidual(const int ndx, const int nu)
-      : Base(ndx, nu, nu)
-      , space_(VectorSpace(nu))
-      , target_(space_->neutral()) {}
 
   /// @brief Constructor using state space and control space dimensions,
   ///        the control space is assumed to be Euclidean.
+  template <unsigned int N = arg, typename = std::enable_if_t<N == 1>>
   StateOrControlErrorResidual(const int ndx, const ConstVectorRef &target)
-      : StateOrControlErrorResidual(ndx, (int)target.size()) {
-    target_ = target;
+      : StateOrControlErrorResidual(
+            ndx, std::make_shared<VectorSpace>(target.size()), target) {}
+
+  template <unsigned int N = arg, typename = std::enable_if_t<N == 1>>
+  StateOrControlErrorResidual(const int ndx, const int nu)
+      : Base(ndx, nu, ndx, nu), space_(std::make_shared<VectorSpace>(nu)),
+        target_(space_->neutral()) {
+    check_target_viable();
   }
 
   void evaluate(const ConstVectorRef &, const ConstVectorRef &u,
-                Data &data) const override {
+                const ConstVectorRef &y, Data &data) const {
     switch (arg) {
     case 1:
       space_->difference(target_, u, data.value_);
+      break;
+    case 2:
+      space_->difference(target_, y, data.value_);
       break;
     default:
       break;
@@ -123,18 +105,21 @@ struct StateOrControlErrorResidual : StageFunctionTpl<_Scalar> {
   }
 
   void computeJacobians(const ConstVectorRef &, const ConstVectorRef &u,
-                        Data &data) const override {
+                        const ConstVectorRef &y, Data &data) const {
     switch (arg) {
     case 1:
       space_->Jdifference(target_, u, data.Ju_, 1);
+      break;
+    case 2:
+      space_->Jdifference(target_, y, data.Jy_, 1);
       break;
     default:
       break;
     }
   }
 
-protected:
-  void validate() const {
+private:
+  inline void check_target_viable() const {
     if (!space_->isNormalized(target_)) {
       ALIGATOR_RUNTIME_ERROR(
           "Target parameter invalid (not a viable element of state manifold.)");
@@ -142,12 +127,16 @@ protected:
   }
 };
 
+template <typename Scalar, unsigned int arg>
+template <unsigned int N, typename>
+StateOrControlErrorResidual<Scalar, arg>::StateOrControlErrorResidual(
+    const shared_ptr<Manifold> &xspace, const int nu,
+    const ConstVectorRef &target)
+    : Base(xspace->ndx(), nu, xspace->ndx()), space_(xspace), target_(target) {
+  check_target_viable();
+}
 } // namespace detail
 
-/// \brief State error \f$x \ominus x_\text{ref}\f$.
-///
-/// This can be used, by using the manifold neutral element as the reference,
-/// to define constraints on the state (e.g. joint position or velocity limits).
 template <typename Scalar>
 struct StateErrorResidualTpl : detail::StateOrControlErrorResidual<Scalar, 0> {
   using Base = detail::StateOrControlErrorResidual<Scalar, 0>;

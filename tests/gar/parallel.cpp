@@ -8,7 +8,6 @@
 #include "aligator/gar/parallel-solver.hpp"
 #include "aligator/gar/proximal-riccati.hpp"
 #include "aligator/gar/utils.hpp"
-#include "aligator/threads.hpp"
 #include <Eigen/Cholesky>
 
 using namespace aligator::gar;
@@ -33,14 +32,14 @@ std::array<problem_t, 2> splitProblemInTwo(const problem_t &problem, uint t0,
 
   knot_t kn1_last = knots1.back(); // copy
 
-  problem_t p1(std::move(knots1), problem.nc0());
+  problem_t p1(knots1, problem.nc0());
   p1.G0 = problem.G0;
   p1.g0 = problem.g0;
   p1.addParameterization(nx_t0);
   {
     knot_t &p1_last = p1.stages.back();
-    p1_last.Gx = kn1_last.A.to_map().transpose();
-    p1_last.Gu = kn1_last.B.to_map().transpose();
+    p1_last.Gx = kn1_last.A.transpose();
+    p1_last.Gu = kn1_last.B.transpose();
     p1_last.gamma = kn1_last.f;
     p1_last.Gth.diagonal().setConstant(-mu);
     kn1_last.A.setZero();
@@ -48,14 +47,14 @@ std::array<problem_t, 2> splitProblemInTwo(const problem_t &problem, uint t0,
     kn1_last.f.setZero();
   }
 
-  problem_t p2(std::move(knots2), 0);
+  problem_t p2(knots2, 0);
   p2.addParameterization(nx_t0);
   {
     knot_t &p2_first = p2.stages[0];
-    p2_first.Gx = kn1_last.E.to_map().transpose();
+    p2_first.Gx = kn1_last.E.transpose();
   }
 
-  return {std::move(p1), std::move(p2)};
+  return {p1, p2};
 }
 
 /// Test the max-only formulation, where both legs are parameterized
@@ -80,7 +79,7 @@ BOOST_AUTO_TEST_CASE(parallel_manual) {
     bool ret = solver_full_horz.forward(xs, us, vs, lbdas);
     BOOST_CHECK(ret);
     KktError err_full = computeKktError(problem, xs, us, vs, lbdas);
-    fmt::println("KKT error (full horz.): {}", err_full);
+    printKktError(err_full, "KKT error (full horz.)");
     BOOST_CHECK_LE(err_full.max, EPS);
   }
 
@@ -170,27 +169,19 @@ BOOST_AUTO_TEST_CASE(parallel_manual) {
 
   KktError err_merged =
       computeKktError(problem, xs_merged, us_merged, vs_merged, lbdas_merged);
-  fmt::println("KKT error (merged) {}", err_merged);
-}
-
-auto sample_normal(Eigen::Index n) {
-  return VectorXs::NullaryExpr(n, normal_unary_op{});
-}
-
-auto sample_normal(Eigen::Index n, Eigen::Index m) {
-  return MatrixXs::NullaryExpr(n, m, normal_unary_op{});
+  printKktError(err_merged, "KKT error (merged)");
 }
 
 /// Randomize some of the parameters of the problem. This simulates something
 /// like updating the LQ problem in SQP.
-void randomlyModifyProblem(problem_t &prob) {
+void randomly_modify_problem(problem_t &prob) {
   auto N = size_t(prob.horizon());
   std::vector<size_t> idx = {0, N / 3, N / 2, N / 2 + 1, N / 2 + 2, N};
   for (auto i : idx) {
     auto &kn = prob.stages.at(i);
-    kn.A = sample_normal(kn.nx, kn.nx);
+    kn.A = kn.A.NullaryExpr(kn.nx, kn.nx, normal_unary_op{});
     kn.B.setRandom();
-    kn.q = sample_normal(kn.nx);
+    kn.q = kn.q.NullaryExpr(kn.nx, normal_unary_op{});
     kn.R.setIdentity();
     kn.S.setZero();
   }
@@ -207,8 +198,7 @@ BOOST_AUTO_TEST_CASE(parallel_solver_class) {
   const double tol = 1e-10;
 
   problem_t problem = generate_problem(x0, horizon, nx, nu);
-  const problem_t problemRef{problem};
-  BOOST_CHECK(problem.get_allocator() == problemRef.get_allocator());
+  problem_t problemRef = problem;
   const double mu = 1e-9;
 
   auto solutionRef = lqrInitializeSolution(problemRef);
@@ -223,22 +213,34 @@ BOOST_AUTO_TEST_CASE(parallel_solver_class) {
     refSolver.forward(xs_ref, us_ref, vs_ref, lbdas_ref);
     KktError err_ref =
         computeKktError(problemRef, xs_ref, us_ref, vs_ref, lbdas_ref, mu, mu);
-    fmt::println("{}", err_ref);
+    printKktError(err_ref);
     BOOST_CHECK_LE(err_ref.max, tol);
   }
-
-  BOOST_CHECK(problem.isApprox(problemRef));
 
   BOOST_TEST_MESSAGE("Run Parallel solver");
   ParallelRiccatiSolver<double> parSolver(problem, num_threads);
 
-  {
-    parSolver.backward(mu, mu);
-    parSolver.forward(xs, us, vs, lbdas);
-    KktError err = computeKktError(problem, xs, us, vs, lbdas, mu, mu);
-    fmt::println("{}", err);
-    BOOST_CHECK_LE(err.max, tol);
-  }
+  parSolver.backward(mu, mu);
+  parSolver.forward(xs, us, vs, lbdas);
+  KktError err = computeKktError(problem, xs, us, vs, lbdas, mu, mu);
+  printKktError(err);
+  BOOST_CHECK_LE(err.max, tol);
+
+  // TODO: properly test feedback/feedforward gains
+  // MatrixXs K0_ref;
+  // MatrixXs K0_par;
+
+  // for (uint i = 0; i < 8; i++) {
+  //   VectorXs ku_ref = refSolver.datas[i].ff.blockRow(0);
+  //   K0_ref = refSolver.datas[i].fb.blockRow(0);
+  //   VectorXs ku_par = parSolver.datas[i].ff.blockRow(0);
+  //   K0_par = parSolver.datas[i].fb.blockRow(0);
+  //   const double Ku_err = infty_norm(K0_par - K0_ref);
+  //   const double ku_err = infty_norm(ku_ref - ku_par);
+  //   fmt::print("|Ku_err| = {:.3e}\n", Ku_err);
+  //   fmt::print("|ku_err| = {:.3e}\n", ku_err);
+  //   BOOST_CHECK_LE(Ku_err, 1e-7);
+  // }
 
   VectorXs xerrs = VectorXs::Zero(horizon + 1);
   VectorXs lerrs = xerrs;
@@ -261,11 +263,11 @@ BOOST_AUTO_TEST_CASE(parallel_solver_class) {
 
   BOOST_TEST_MESSAGE("Run Parallel solver again [tweak the problem]");
   for (size_t i = 0; i < 10; i++) {
-    randomlyModifyProblem(problem);
+    randomly_modify_problem(problem);
     parSolver.backward(mu, mu);
     parSolver.forward(xs, us, vs, lbdas);
-    KktError e = computeKktError(problem, xs, us, vs, lbdas, mu, mu, false);
-    fmt::println("{}", e);
+    KktError e = computeKktError(problem, xs, us, vs, lbdas, mu, mu);
+    printKktError(e);
     BOOST_CHECK_LE(e.max, tol);
   }
 }

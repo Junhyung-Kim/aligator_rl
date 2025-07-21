@@ -1,13 +1,11 @@
 /// @file
-/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, INRIA
+/// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 #ifdef ALIGATOR_WITH_CROCODDYL_COMPAT
-#include "aligator/python/fwd.hpp"
+#include "aligator/python/compat/croco.hpp"
+#include "aligator/python/utils.hpp"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-#include "aligator/core/traj-opt-problem.hpp"
-#include "aligator/compat/crocoddyl/action-model-wrap.hpp"
-#include "aligator/compat/crocoddyl/problem-wrap.hpp"
-#include "aligator/compat/crocoddyl/state-wrap.hpp"
+#include "aligator/compat/crocoddyl/instantiate.txx"
 #endif
 
 namespace aligator {
@@ -30,17 +28,17 @@ void exposeCrocoddylCompat() {
   using ns_croc::context::DynamicsDataWrapper;
   using ns_croc::context::StateWrapper;
 
+  bp::register_ptr_to_python<shared_ptr<ActionModelWrapper>>();
   bp::class_<ActionModelWrapper, bp::bases<context::StageModel>>(
       "ActionModelWrapper", "Wrapper for Crocoddyl action models.",
-      bp::init<shared_ptr<CrocActionModel>>(bp::args("action_model")))
+      bp::init<boost::shared_ptr<CrocActionModel>>(bp::args("action_model")))
       .def_readonly("action_model", &ActionModelWrapper::action_model_,
-                    "Underlying Crocoddyl ActionModel.")
-      .def(PolymorphicMultiBaseVisitor<context::StageModel>());
+                    "Underlying Crocoddyl ActionModel.");
 
   bp::register_ptr_to_python<shared_ptr<ActionDataWrapper>>();
   bp::class_<ActionDataWrapper, bp::bases<context::StageData>>(
       "ActionDataWrapper", bp::no_init)
-      .def(bp::init<const ActionModelWrapper &>(
+      .def(bp::init<const boost::shared_ptr<CrocActionModel> &>(
           bp::args("self", "croc_action_model")))
       .def_readonly("croc_action_data", &ActionDataWrapper::croc_action_data,
                     "Underlying Crocoddyl action data.");
@@ -51,9 +49,9 @@ void exposeCrocoddylCompat() {
 
   bp::class_<StateWrapper, bp::bases<context::Manifold>>(
       "StateWrapper", "Wrapper for a Crocoddyl state.", bp::no_init)
-      .def(bp::init<shared_ptr<StateAbstract>>(bp::args("self", "state")))
-      .def_readonly("croc_state", &StateWrapper::croc_state)
-      .def(PolymorphicMultiBaseVisitor<context::Manifold>());
+      .def(
+          bp::init<boost::shared_ptr<StateAbstract>>(bp::args("self", "state")))
+      .def_readonly("croc_state", &StateWrapper::croc_state);
 }
 
 } // namespace python

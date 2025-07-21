@@ -1,10 +1,9 @@
 /// @file
-/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, INRIA
+/// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 #pragma once
 
 #include "aligator/compat/crocoddyl/action-model-wrap.hpp"
-#include "aligator/compat/crocoddyl/cost-wrap.hpp"
-#include "aligator/core/vector-space.hpp"
+#include "aligator/core/stage-data.hpp"
 
 namespace aligator {
 namespace compat {
@@ -12,12 +11,10 @@ namespace croc {
 
 template <typename Scalar>
 ActionModelWrapperTpl<Scalar>::ActionModelWrapperTpl(
-    shared_ptr<CrocActionModel> action_model)
-    : Base(CostAbstract{StateWrapper{action_model->get_state()},
-                        int(action_model->get_nu())},
-           NoOpDynamics<Scalar>{StateWrapper{action_model->get_state()},
-                                int(action_model->get_nu())})
-    , action_model_(action_model) {}
+    boost::shared_ptr<CrocActionModel> action_model)
+    : Base(std::make_shared<StateWrapper>(action_model->get_state()),
+           (int)action_model->get_nu()),
+      action_model_(action_model) {}
 
 template <typename Scalar>
 void ActionModelWrapperTpl<Scalar>::evaluate(const ConstVectorRef &x,
@@ -59,19 +56,18 @@ void ActionModelWrapperTpl<Scalar>::computeFirstOrderDerivatives(
 
 template <typename Scalar>
 auto ActionModelWrapperTpl<Scalar>::createData() const -> shared_ptr<Data> {
-  return std::make_shared<ActionDataWrap>(*this);
+  return std::make_shared<ActionDataWrap>(action_model_);
 }
 
 /* CrocActionDataWrapper */
 
 template <typename Scalar>
 ActionDataWrapperTpl<Scalar>::ActionDataWrapperTpl(
-    const ActionModelWrapperTpl<Scalar> &action_model_wrap)
-    : Base(action_model_wrap)
-    , croc_action_data(action_model_wrap.action_model_->createData()) {
-  dynamics_data =
-      std::make_shared<DynamicsDataWrapper>(*action_model_wrap.action_model_);
+    const boost::shared_ptr<CrocActionModel> &croc_action_model)
+    : Base(), croc_action_data(croc_action_model->createData()) {
+  dynamics_data = std::make_shared<DynamicsDataWrapper>(*croc_action_model);
   Base::dynamics_data = dynamics_data;
+  this->constraint_data = {dynamics_data};
   this->cost_data =
       std::make_shared<CrocCostDataWrapperTpl<Scalar>>(croc_action_data);
   checkData();

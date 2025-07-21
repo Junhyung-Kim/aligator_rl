@@ -1,9 +1,9 @@
-#include "aligator/core/traj-opt-data.hxx" // impl file
+#include "aligator/core/traj-opt-data.hpp"
+#include "aligator/core/traj-opt-problem.hpp"
+#include "aligator/core/cost-abstract.hpp"
 
 namespace aligator {
 
 template struct TrajOptDataTpl<context::Scalar>;
-template context::Scalar computeTrajectoryCost<context::Scalar>(
-    const context::TrajOptData &problem_data);
 
 } // namespace aligator

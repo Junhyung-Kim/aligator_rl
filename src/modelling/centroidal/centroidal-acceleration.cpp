@@ -1,4 +1,4 @@
-#include "aligator/modelling/centroidal/centroidal-acceleration.hxx"
+#include "aligator/modelling/centroidal/centroidal-acceleration.hpp"
 
 namespace aligator {
 

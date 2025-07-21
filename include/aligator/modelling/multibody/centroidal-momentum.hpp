@@ -15,7 +15,7 @@ template <typename Scalar> struct CentroidalMomentumDataTpl;
  */
 
 template <typename _Scalar>
-struct CentroidalMomentumResidualTpl : UnaryFunctionTpl<_Scalar> {
+struct CentroidalMomentumResidualTpl : UnaryFunctionTpl<_Scalar>, frame_api {
 public:
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
@@ -30,9 +30,7 @@ public:
 
   CentroidalMomentumResidualTpl(const int ndx, const int nu, const Model &model,
                                 const Vector6s &h_ref)
-      : Base(ndx, nu, 6)
-      , pin_model_(model)
-      , h_ref_(h_ref) {}
+      : Base(ndx, nu, 6), pin_model_(model), h_ref_(h_ref) {}
 
   void evaluate(const ConstVectorRef &x, BaseData &data) const;
 
@@ -65,6 +63,8 @@ struct CentroidalMomentumDataTpl : StageFunctionDataTpl<Scalar> {
 
 } // namespace aligator
 
+#include "aligator/modelling/multibody/centroidal-momentum.hxx"
+
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-#include "aligator/modelling/multibody/centroidal-momentum.txx"
+#include "./centroidal-momentum.txx"
 #endif

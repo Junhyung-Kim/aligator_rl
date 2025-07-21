@@ -39,7 +39,7 @@ static void BM_croc_fddp(benchmark::State &state) {
   const double croc_tol = TOL * TOL * (double)nsteps;
   solver.set_th_stop(croc_tol);
   if (verbose)
-    solver.setCallbacks({std::make_shared<croc::CallbackVerbose>()});
+    solver.setCallbacks({boost::make_shared<croc::CallbackVerbose>()});
 
   for (auto _ : state) {
     solver.solve(xs_i, us_i, maxiters);
@@ -83,8 +83,7 @@ template <uint NPROC> void BM_aligator(benchmark::State &state) {
   getInitialGuesses(croc_problem, xs_i, us_i);
 
   const double mu_init = 1e-10;
-  SolverProxDDP solver(TOL, mu_init, maxiters);
-  solver.verbose_ = get_verbose_flag(verbose);
+  SolverProxDDP solver(TOL, mu_init, 0., maxiters, get_verbose_flag(verbose));
   solver.setNumThreads(NPROC);
   solver.setup(prob_wrap);
 

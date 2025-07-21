@@ -1,13 +1,10 @@
 /// @file
-/// @copyright Copyright (C) 2024 LAAS-CNRS, INRIA
+/// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 
-#include "aligator/solvers/proxddp/merit-function.hxx"
+#include "aligator/solvers/proxddp/merit-function.hpp"
 
 namespace aligator {
 
 template struct PDALFunction<context::Scalar>;
-template context::Scalar costDirectionalDerivative<context::Scalar>(
-    const WorkspaceTpl<context::Scalar> &workspace,
-    const TrajOptDataTpl<context::Scalar> &prob_data);
 
 } // namespace aligator

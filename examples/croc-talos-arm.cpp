@@ -22,7 +22,7 @@ void makeTalosArm(pin::Model &model) {
   pin::urdf::buildModel(talos_arm_path, model);
 }
 
-std::shared_ptr<croc::ShootingProblem>
+boost::shared_ptr<croc::ShootingProblem>
 defineCrocoddylProblem(std::size_t nsteps) {
   using croc::ActuationModelFull;
   using croc::CostModelResidual;
@@ -36,27 +36,27 @@ defineCrocoddylProblem(std::size_t nsteps) {
   using DAM = croc::DifferentialActionModelFreeFwdDynamics;
   using ActionModel = croc::ActionModelAbstract;
 
-  auto rmodel = std::make_shared<pin::Model>();
+  auto rmodel = boost::make_shared<pin::Model>();
   makeTalosArm(*rmodel);
-  auto state = std::make_shared<StateMultibody>(rmodel);
+  auto state = boost::make_shared<StateMultibody>(rmodel);
 
-  auto runningCost = std::make_shared<CostModelSum>(state);
-  auto terminalCost = std::make_shared<CostModelSum>(state);
+  auto runningCost = boost::make_shared<CostModelSum>(state);
+  auto terminalCost = boost::make_shared<CostModelSum>(state);
 
   pin::JointIndex joint_id = rmodel->getFrameId("gripper_left_joint");
   pin::SE3 target_frame;
   target_frame.setIdentity();
   target_frame.translation() << 0., 0., 0.4;
 
-  auto framePlacementResidual = std::make_shared<ResidualModelFramePlacement>(
+  auto framePlacementResidual = boost::make_shared<ResidualModelFramePlacement>(
       state, joint_id, target_frame);
 
   auto goalTrackingCost =
-      std::make_shared<CostModelResidual>(state, framePlacementResidual);
-  auto xregCost = std::make_shared<CostModelResidual>(
-      state, std::make_shared<ResidualModelState>(state));
-  auto uregCost = std::make_shared<CostModelResidual>(
-      state, std::make_shared<ResidualModelControl>(state));
+      boost::make_shared<CostModelResidual>(state, framePlacementResidual);
+  auto xregCost = boost::make_shared<CostModelResidual>(
+      state, boost::make_shared<ResidualModelState>(state));
+  auto uregCost = boost::make_shared<CostModelResidual>(
+      state, boost::make_shared<ResidualModelControl>(state));
 
   runningCost->addCost("gripperPose", goalTrackingCost, 1.0);
   runningCost->addCost("xReg", xregCost, 1e-4);
@@ -64,37 +64,39 @@ defineCrocoddylProblem(std::size_t nsteps) {
 
   terminalCost->addCost("gripperPose", goalTrackingCost, 1.0);
 
-  auto actuationModel = std::make_shared<ActuationModelFull>(state);
+  auto actuationModel = boost::make_shared<ActuationModelFull>(state);
 
   const double dt = 1e-3;
 
   VectorXd armature(7);
   armature << 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.0;
 
-  auto contDyn = std::make_shared<DAM>(state, actuationModel, runningCost);
+  auto contDyn = boost::make_shared<DAM>(state, actuationModel, runningCost);
   contDyn->set_armature(armature);
-  auto runningModel = std::make_shared<IntegratedActionModelEuler>(contDyn, dt);
+  auto runningModel =
+      boost::make_shared<IntegratedActionModelEuler>(contDyn, dt);
 
-  auto termContDyn = std::make_shared<DAM>(state, actuationModel, terminalCost);
+  auto termContDyn =
+      boost::make_shared<DAM>(state, actuationModel, terminalCost);
   termContDyn->set_armature(armature);
   auto terminalModel =
-      std::make_shared<IntegratedActionModelEuler>(termContDyn, 0.0);
+      boost::make_shared<IntegratedActionModelEuler>(termContDyn, 0.0);
 
   VectorXd q0(rmodel->nq);
   q0 << 0.173046, 1.0, -0.52366, 0.0, 0.0, 0.1, -0.005;
   VectorXd x0(state->get_nx());
   x0 << q0, VectorXd::Zero(rmodel->nv);
 
-  std::vector<std::shared_ptr<ActionModel>> running_models(nsteps,
-                                                           runningModel);
+  std::vector<boost::shared_ptr<ActionModel>> running_models(nsteps,
+                                                             runningModel);
 
-  auto shooting_problem = std::make_shared<croc::ShootingProblem>(
+  auto shooting_problem = boost::make_shared<croc::ShootingProblem>(
       x0, running_models, terminalModel);
   return shooting_problem;
 }
 
 void getInitialGuesses(
-    const std::shared_ptr<croc::ShootingProblem> &croc_problem,
+    const boost::shared_ptr<croc::ShootingProblem> &croc_problem,
     std::vector<Eigen::VectorXd> &xs_i, std::vector<Eigen::VectorXd> &us_i) {
   using Eigen::VectorXd;
 

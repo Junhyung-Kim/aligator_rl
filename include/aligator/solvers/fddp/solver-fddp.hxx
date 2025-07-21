@@ -2,11 +2,13 @@
 /// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 #pragma once
 
-#include "solver-fddp.hpp"
-#include "linesearch.hpp"
-#include "aligator/core/stage-data.hpp"
+#include "./solver-fddp.hpp"
+#include "./linesearch.hpp"
 
 #include <fmt/ranges.h>
+#include <chrono>
+#include <iostream>
+
 
 namespace aligator {
 
@@ -16,41 +18,35 @@ template <typename Scalar>
 SolverFDDPTpl<Scalar>::SolverFDDPTpl(const Scalar tol, VerboseLevel verbose,
                                      const Scalar reg_init,
                                      const std::size_t max_iters)
-    : target_tol_(tol)
-    , reg_init(reg_init)
-    , verbose_(verbose)
-    , max_iters(max_iters)
-    , force_initial_condition_(false)
-    , num_threads_(1) {
+    : target_tol_(tol), reg_init(reg_init), verbose_(verbose),
+      max_iters(max_iters), force_initial_condition_(false), num_threads_(1) {
   ls_params.alpha_min = pow(2., -9.);
+  
 }
 
 template <typename Scalar>
 void SolverFDDPTpl<Scalar>::setup(const Problem &problem) {
-  if (!problem.checkIntegrity())
-    ALIGATOR_RUNTIME_ERROR("Problem failed integrity check.");
-  results_.~Results();
-  workspace_.~Workspace();
+  problem.checkIntegrity();
   new (&results_) Results(problem);
   new (&workspace_) Workspace(problem);
   // check if there are any constraints other than dynamics and throw a warning
   std::vector<std::size_t> idx_where_constraints;
   for (std::size_t i = 0; i < problem.numSteps(); i++) {
-    const StageModel &sm = *problem.stages_[i];
-    if (!sm.constraints_.empty())
+    const shared_ptr<StageModel> &sm = problem.stages_[i];
+    if (!sm->constraints_.empty())
       idx_where_constraints.push_back(i);
   }
   if (idx_where_constraints.size() > 0) {
-    ALIGATOR_WARNING(
-        "SolverFDDP",
-        "Some problem stages have constraints, which this solver cannot "
-        "handle. Please use a penalized cost formulation.\n");
+    ALIGATOR_FDDP_WARNING(
+        fmt::format("problem stages [{}] have constraints, "
+                    "which this solver cannot handle. "
+                    "Please use a penalized cost formulation.\n",
+                    fmt::join(idx_where_constraints, ", ")));
   }
   if (!problem.term_cstrs_.empty()) {
-    ALIGATOR_WARNING("SolverFDDP",
-                     "problem has at least one terminal constraint, which "
-                     "this solver cannot "
-                     "handle.\n");
+    ALIGATOR_FDDP_WARNING("problem has at least one terminal constraint, which "
+                          "this solver cannot "
+                          "handle.\n");
   }
 }
 
@@ -224,7 +220,7 @@ void SolverFDDPTpl<Scalar>::backwardPass(const Problem &problem,
     const VParams &vnext = workspace.value_params[i + 1];
     QParams &qparam = workspace.q_params[i];
 
-    StageModel sm = *problem.stages_[i];
+    StageModel &sm = *problem.stages_[i];
     StageData &sd = *prob_data.stage_data[i];
 
     const int nu = sm.nu();
@@ -260,6 +256,16 @@ void SolverFDDPTpl<Scalar>::backwardPass(const Problem &problem,
     llt.compute(qparam.Quu);
     llt.solveInPlace(kkt_rhs);
 
+#ifndef NDEBUG
+    {
+      ALIGATOR_NOMALLOC_END;
+      std::FILE *fi = std::fopen("fddp.log", "a");
+      fmt::print(fi, "uff[{:d}]={}\n", i, kkt_ff.head(nu).transpose());
+      fmt::print(fi, "V'x[{:d}]={}\n", i, vnext.Vx_.transpose());
+      std::fclose(fi);
+      ALIGATOR_NOMALLOC_BEGIN;
+    }
+#endif
     workspace.Quuks_[i].noalias() = qparam.Quu * kkt_ff;
 
     /* Compute value function */
@@ -279,18 +285,23 @@ void SolverFDDPTpl<Scalar>::backwardPass(const Problem &problem,
 }
 
 template <typename Scalar>
-bool SolverFDDPTpl<Scalar>::run(const Problem &problem,
+bool SolverFDDPTpl<Scalar>::run_alpha(const Problem &problem,
                                 const std::vector<VectorXs> &xs_init,
-                                const std::vector<VectorXs> &us_init) {
+                                const std::vector<VectorXs> &us_init, double alpha) {
   preg_ = reg_init;
+
+#ifndef NDEBUG
+  std::FILE *fi = std::fopen("fddp.log", "w");
+  std::fclose(fi);
+#endif
 
   if (!results_.isInitialized() || !workspace_.isInitialized()) {
     ALIGATOR_RUNTIME_ERROR(
         "Either results or workspace not allocated. Call setup() first!");
   }
 
-  detail::check_initial_guess_and_assign(problem, xs_init, us_init, results_.xs,
-                                         results_.us);
+  check_trajectory_and_assign(problem, xs_init, us_init, results_.xs,
+                              results_.us);
   // optionally override xs[0]
   if (force_initial_condition_) {
     workspace_.trial_xs[0] = problem.getInitState();
@@ -305,15 +316,26 @@ bool SolverFDDPTpl<Scalar>::run(const Problem &problem,
   logger.addColumn(BASIC_KEYS[5]);
   logger.addColumn(BASIC_KEYS[6]);
   logger.addColumn(BASIC_KEYS[7]);
-  logger.addColumn(BASIC_KEYS[9]);
+  logger.addColumn(BASIC_KEYS[8]);
   logger.printHeadline();
+
+
+  auto start = std::chrono::high_resolution_clock::now();
+  auto start1 = std::chrono::high_resolution_clock::now();
+  auto start2 = std::chrono::high_resolution_clock::now();
+  auto start3 = std::chrono::high_resolution_clock::now();
+  auto start4 = std::chrono::high_resolution_clock::now();
+  auto start5 = std::chrono::high_resolution_clock::now();
+  auto start6 = std::chrono::high_resolution_clock::now();
+  auto start7 = std::chrono::high_resolution_clock::now();
+  auto start8 = std::chrono::high_resolution_clock::now();
 
   // in Crocoddyl, linesearch xs is primed to use problem x0
 
   const auto linesearch_fun = [&](const Scalar alpha) {
     return forwardPass(problem, results_, workspace_, alpha);
   };
-
+  start1 = std::chrono::high_resolution_clock::now();
   Scalar &d1_phi = workspace_.d1_;
   Scalar &d2_phi = workspace_.d2_;
   Scalar phi0;
@@ -322,7 +344,7 @@ bool SolverFDDPTpl<Scalar>::run(const Problem &problem,
     expectedImprovement(workspace_, d1_phi, d2_phi);
     return phi0 + alpha * (d1_phi + 0.5 * d2_phi * alpha);
   };
-
+  start2 = std::chrono::high_resolution_clock::now();
   std::size_t &iter = results_.num_iters;
   results_.traj_cost_ = problem.evaluate(results_.xs, results_.us,
                                          workspace_.problem_data, num_threads_);
@@ -333,7 +355,7 @@ bool SolverFDDPTpl<Scalar>::run(const Problem &problem,
                                workspace_.problem_data, num_threads_);
     results_.prim_infeas = computeInfeasibility(problem);
     ALIGATOR_RAISE_IF_NAN(results_.prim_infeas);
-
+    start3 = std::chrono::high_resolution_clock::now();
     backwardPass(problem, workspace_);
     results_.dual_infeas = computeCriterion(workspace_);
     ALIGATOR_RAISE_IF_NAN(results_.dual_infeas);
@@ -344,7 +366,7 @@ bool SolverFDDPTpl<Scalar>::run(const Problem &problem,
       results_.conv = true;
       break;
     }
-
+    start4 = std::chrono::high_resolution_clock::now();
     acceptGains(workspace_, results_);
 
     phi0 = results_.traj_cost_;
@@ -356,6 +378,10 @@ bool SolverFDDPTpl<Scalar>::run(const Problem &problem,
     std::tie(alpha_opt, phi_new) = fddp_goldstein_linesearch(
         linesearch_fun, ls_model, phi0, ls_params, th_grad_, d1_phi);
 
+
+    start5 = std::chrono::high_resolution_clock::now();
+
+    
     results_.traj_cost_ = phi_new;
     ALIGATOR_RAISE_IF_NAN(alpha_opt);
     ALIGATOR_RAISE_IF_NAN(phi_new);
@@ -375,7 +401,7 @@ bool SolverFDDPTpl<Scalar>::run(const Problem &problem,
       results_.conv = true;
       break;
     }
-
+    start5 = std::chrono::high_resolution_clock::now();
     if (alpha_opt > th_step_dec_) {
       decreaseRegularization();
     }
@@ -386,10 +412,21 @@ bool SolverFDDPTpl<Scalar>::run(const Problem &problem,
         break;
       }
     }
-
+    start6 = std::chrono::high_resolution_clock::now();
     invokeCallbacks(workspace_, results_);
     logger.log();
   }
+
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(start1 - start);
+    auto duration1= std::chrono::duration_cast<std::chrono::microseconds>(start2 - start1);
+    auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(start3 - start2);
+    auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(start4 - start3);
+    auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(start5 - start4);
+    auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(start6 - start5);
+    auto duration6 = std::chrono::duration_cast<std::chrono::microseconds>(start7 - start6);
+    auto duration7 = std::chrono::duration_cast<std::chrono::microseconds>(start8 - start7);
+    
+    std::cout << "Elapsed time: " << duration.count() << " "<< duration1.count() << " "<< duration2.count()<< " "<< duration3.count() << " "<< duration4.count()<< " "<< duration5.count()<< " "<< duration6.count()<< " "<< duration7.count()<< std::endl;
 
   if (iter < max_iters)
     logger.log();
@@ -398,10 +435,199 @@ bool SolverFDDPTpl<Scalar>::run(const Problem &problem,
 }
 
 template <typename Scalar>
-auto SolverFDDPTpl<Scalar>::stage_get_dynamics_data(
-    const StageDataTpl<Scalar> &data) -> const ExplicitDynamicsData & {
-  const DynamicsDataTpl<Scalar> &dd = *data.dynamics_data;
-  return static_cast<const ExplicitDynamicsData &>(dd);
+bool SolverFDDPTpl<Scalar>::run(const Problem &problem,
+                                const std::vector<VectorXs> &xs_init,
+                                const std::vector<VectorXs> &us_init) {
+  preg_ = reg_init;
+
+#ifndef NDEBUG
+  std::FILE *fi = std::fopen("fddp.log", "w");
+  std::fclose(fi);
+#endif
+
+  if (!results_.isInitialized() || !workspace_.isInitialized()) {
+    ALIGATOR_RUNTIME_ERROR(
+        "Either results or workspace not allocated. Call setup() first!");
+  }
+
+  check_trajectory_and_assign(problem, xs_init, us_init, results_.xs,
+                              results_.us);
+  // optionally override xs[0]
+  if (force_initial_condition_) {
+    workspace_.trial_xs[0] = problem.getInitState();
+  }
+  results_.conv = false;
+
+  logger.active = verbose_ > 0;
+  logger.addColumn(BASIC_KEYS[0]);
+  logger.addColumn(BASIC_KEYS[1]);
+  logger.addColumn(BASIC_KEYS[3]);
+  logger.addColumn(BASIC_KEYS[4]);
+  logger.addColumn(BASIC_KEYS[5]);
+  logger.addColumn(BASIC_KEYS[6]);
+  logger.addColumn(BASIC_KEYS[7]);
+  logger.addColumn(BASIC_KEYS[8]);
+  logger.printHeadline();
+
+
+  auto start = std::chrono::high_resolution_clock::now();
+  auto start1 = std::chrono::high_resolution_clock::now();
+  auto start2 = std::chrono::high_resolution_clock::now();
+  auto start3 = std::chrono::high_resolution_clock::now();
+  auto start4 = std::chrono::high_resolution_clock::now();
+  auto start5 = std::chrono::high_resolution_clock::now();
+  auto start6 = std::chrono::high_resolution_clock::now();
+  auto start7 = std::chrono::high_resolution_clock::now();
+  auto start8 = std::chrono::high_resolution_clock::now();
+
+  // in Crocoddyl, linesearch xs is primed to use problem x0
+
+  const auto linesearch_fun = [&](const Scalar alpha) {
+    return forwardPass(problem, results_, workspace_, alpha);
+  };
+  start1 = std::chrono::high_resolution_clock::now();
+  Scalar &d1_phi = workspace_.d1_;
+  Scalar &d2_phi = workspace_.d2_;
+  Scalar phi0;
+  // linesearch model oracle
+  const auto ls_model = [&](const Scalar alpha) {
+    expectedImprovement(workspace_, d1_phi, d2_phi);
+    return phi0 + alpha * (d1_phi + 0.5 * d2_phi * alpha);
+  };
+  start2 = std::chrono::high_resolution_clock::now();
+  std::size_t &iter = results_.num_iters;
+  results_.traj_cost_ = problem.evaluate(results_.xs, results_.us,
+                                         workspace_.problem_data, num_threads_);
+
+  for (iter = 0; iter < max_iters; ++iter) {
+
+    problem.computeDerivatives(results_.xs, results_.us,
+                               workspace_.problem_data, num_threads_);
+    results_.prim_infeas = computeInfeasibility(problem);
+    ALIGATOR_RAISE_IF_NAN(results_.prim_infeas);
+    start3 = std::chrono::high_resolution_clock::now();
+    backwardPass(problem, workspace_);
+    results_.dual_infeas = computeCriterion(workspace_);
+    ALIGATOR_RAISE_IF_NAN(results_.dual_infeas);
+
+    Scalar stopping_criterion =
+        std::max(results_.prim_infeas, results_.dual_infeas);
+    if (stopping_criterion < target_tol_) {
+      results_.conv = true;
+      break;
+    }
+    start4 = std::chrono::high_resolution_clock::now();
+    acceptGains(workspace_, results_);
+
+    phi0 = results_.traj_cost_;
+    ALIGATOR_RAISE_IF_NAN(phi0);
+
+    updateExpectedImprovement(workspace_, results_);
+
+    Scalar alpha_opt, phi_new;
+    std::tie(alpha_opt, phi_new) = fddp_goldstein_linesearch(
+        linesearch_fun, ls_model, phi0, ls_params, th_grad_, d1_phi);
+
+
+    start5 = std::chrono::high_resolution_clock::now();
+
+    
+    results_.traj_cost_ = phi_new;
+    ALIGATOR_RAISE_IF_NAN(alpha_opt);
+    ALIGATOR_RAISE_IF_NAN(phi_new);
+
+    logger.addEntry("iter", iter + 1);
+    logger.addEntry("alpha", alpha_opt);
+    logger.addEntry("prim_err", results_.prim_infeas);
+    logger.addEntry("dual_err", results_.dual_infeas);
+    logger.addEntry("preg", preg_);
+    logger.addEntry("dphi0", d1_phi);
+    logger.addEntry("merit", phi_new);
+    logger.addEntry("ΔM", phi_new - phi0);
+
+    results_.xs = workspace_.trial_xs;
+    results_.us = workspace_.trial_us;
+    if (std::abs(d1_phi) < th_grad_) {
+      results_.conv = true;
+      break;
+    }
+    start5 = std::chrono::high_resolution_clock::now();
+    if (alpha_opt > th_step_dec_) {
+      decreaseRegularization();
+    }
+    if (alpha_opt <= th_step_inc_) {
+      increaseRegularization();
+      if (preg_ == reg_max_) {
+        results_.conv = false;
+        break;
+      }
+    }
+    start6 = std::chrono::high_resolution_clock::now();
+    invokeCallbacks(workspace_, results_);
+    logger.log();
+  }
+
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(start1 - start);
+    auto duration1= std::chrono::duration_cast<std::chrono::microseconds>(start2 - start1);
+    auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(start3 - start2);
+    auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(start4 - start3);
+    auto duration4 = std::chrono::duration_cast<std::chrono::microseconds>(start5 - start4);
+    auto duration5 = std::chrono::duration_cast<std::chrono::microseconds>(start6 - start5);
+    auto duration6 = std::chrono::duration_cast<std::chrono::microseconds>(start7 - start6);
+    auto duration7 = std::chrono::duration_cast<std::chrono::microseconds>(start8 - start7);
+    
+    std::cout << "Elapsed time: " << duration.count() << " "<< duration1.count() << " "<< duration2.count()<< " "<< duration3.count() << " "<< duration4.count()<< " "<< duration5.count()<< " "<< duration6.count()<< " "<< duration7.count()<< std::endl;
+
+  if (iter < max_iters)
+    logger.log();
+  logger.finish(results_.conv);
+  return results_.conv;
 }
+
+template <typename Scalar>
+void SolverFDDPTpl<Scalar>::setRLPolicy(std::shared_ptr<StepSizePolicy> policy,
+                  std::vector<std::vector<Scalar>>* states,
+                  std::vector<Scalar>* alphas,
+                  std::vector<Scalar>* rewards,
+                  std::vector<std::vector<Scalar>>* next_states,
+                  std::mutex* mutex) {
+  rl_policy_ = policy;
+  states_ = states;
+  alphas_ = alphas;
+  rewards_ = rewards;
+  next_states_ = next_states;
+  transitions_mutex_ = mutex;
+}
+
+template <typename Scalar>
+std::tuple<std::vector<std::vector<Scalar>>, std::vector<Scalar>,
+           std::vector<Scalar>, std::vector<std::vector<Scalar>>>
+SolverFDDPTpl<Scalar>::getTransitions() const {
+  if (transitions_mutex_ && states_ && alphas_ && rewards_ && next_states_) {
+    std::cout << "DDDDD "<< std::endl;
+    std::lock_guard<std::mutex> lock(*transitions_mutex_);
+    std::cout << "EEEEE "<< std::endl;
+    return {*states_, *alphas_, *rewards_, *next_states_};
+  }
+  std::cout << "FFFFFFFF "<< std::endl;
+  return {{}, {}, {}, {}}; // Return empty tuple if not initialized
+}
+
+template <typename Scalar>
+std::vector<Scalar> SolverFDDPTpl<Scalar>::get_state_features() const {
+    Scalar J = results_.traj_cost_;
+    Scalar delta_J = 1.0;//workspace_.dVexp[0];
+    Scalar gaps_norm = 0.0;
+    const auto& xs = results_.xs;
+    const auto& us = results_.us;
+    const auto& problem = 1.0;//workspace_.problem;
+    /*for (size_t i = 0; i < us.size(); ++i) {
+      Eigen::VectorXd next_x = problem->get_runningModels()[i]->get_state()->integrate(
+          xs[i], problem->get_runningModels()[i]->calcDiff(xs[i], us[i]).dx);
+      gaps_norm += (xs[i + 1] - next_x).norm();
+    }*/
+    Scalar iteration = static_cast<Scalar>(results_.num_iters);
+    return {J, delta_J, gaps_norm, iteration};
+  }
 
 } // namespace aligator

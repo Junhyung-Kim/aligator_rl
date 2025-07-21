@@ -22,14 +22,15 @@ int main(int, char **) {
 
   auto problem = defineLocomotionProblem(T_ss, T_ds);
 
-  SolverProxDDPTpl<double> solver(TOL, mu_init, max_iters, aligator::VERBOSE);
+  SolverProxDDPTpl<double> solver(TOL, mu_init, 0., max_iters,
+                                  aligator::VERBOSE);
   std::vector<VectorXd> xs_i, us_i;
   Eigen::VectorXd u0 = Eigen::VectorXd::Zero(22);
   xs_i.assign(nsteps + 1, problem.getInitState());
   us_i.assign(nsteps, u0);
 
   solver.rollout_type_ = aligator::RolloutType::LINEAR;
-  solver.sa_strategy_ = aligator::StepAcceptanceStrategy::FILTER;
+  solver.sa_strategy = aligator::StepAcceptanceStrategy::FILTER;
   solver.filter_.beta_ = 1e-5;
   solver.force_initial_condition_ = true;
   solver.reg_min = 1e-6;

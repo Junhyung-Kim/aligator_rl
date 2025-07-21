@@ -1,4 +1,4 @@
-#include "aligator/modelling/multibody/frame-translation.hxx"
+#include "aligator/modelling/multibody/frame-translation.hpp"
 
 namespace aligator {
 

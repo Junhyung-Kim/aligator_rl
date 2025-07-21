@@ -10,16 +10,18 @@ namespace aligator {
 template <typename Scalar>
 void MultibodyWrenchConeResidualTpl<Scalar>::evaluate(const ConstVectorRef &x,
                                                       const ConstVectorRef &u,
+                                                      const ConstVectorRef &,
                                                       BaseData &data) const {
   Data &d = static_cast<Data &>(data);
+  pinocchio::DataTpl<Scalar> &pdata = d.pin_data_;
 
-  const ConstVectorRef q = x.head(pin_model_.nq);
-  const ConstVectorRef v = x.tail(pin_model_.nv);
+  const auto q = x.head(pin_model_.nq);
+  const auto v = x.tail(pin_model_.nv);
 
   d.tau_.noalias() = actuation_matrix_ * u;
-  pinocchio::constraintDynamics(
-      pin_model_, d.pin_data_, q, v, pinocchio::make_const_ref(d.tau_),
-      constraint_models_, d.constraint_datas_, d.settings);
+  pinocchio::constraintDynamics(pin_model_, d.pin_data_, q, v, d.tau_,
+                                constraint_models_, d.constraint_datas_,
+                                d.settings);
 
   // Unilateral contact
   d.value_.noalias() =
@@ -28,7 +30,8 @@ void MultibodyWrenchConeResidualTpl<Scalar>::evaluate(const ConstVectorRef &x,
 
 template <typename Scalar>
 void MultibodyWrenchConeResidualTpl<Scalar>::computeJacobians(
-    const ConstVectorRef &, const ConstVectorRef &, BaseData &data) const {
+    const ConstVectorRef &, const ConstVectorRef &, const ConstVectorRef &,
+    BaseData &data) const {
   Data &d = static_cast<Data &>(data);
 
   pinocchio::computeConstraintDynamicsDerivatives(
@@ -50,10 +53,9 @@ void MultibodyWrenchConeResidualTpl<Scalar>::computeJacobians(
 template <typename Scalar>
 MultibodyWrenchConeDataTpl<Scalar>::MultibodyWrenchConeDataTpl(
     const MultibodyWrenchConeResidualTpl<Scalar> *model)
-    : Base(model->ndx1, model->nu, 17)
-    , pin_data_(model->pin_model_)
-    , tau_(model->pin_model_.nv)
-    , temp_(6, model->nu) {
+    : Base(model->ndx1, model->nu, model->ndx2, 17),
+      pin_data_(model->pin_model_), tau_(model->pin_model_.nv),
+      temp_(6, model->nu) {
   tau_.setZero();
   temp_.setZero();
 

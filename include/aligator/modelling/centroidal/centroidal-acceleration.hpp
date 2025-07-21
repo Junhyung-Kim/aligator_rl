@@ -33,25 +33,22 @@ public:
                                     const double mass, const Vector3s &gravity,
                                     const ContactMap &contact_map,
                                     const int force_size)
-      : Base(ndx, nu, 3)
-      , contact_map_(contact_map)
-      , nk_(size_t(nu) / size_t(force_size))
-      , mass_(mass)
-      , gravity_(gravity)
-      , force_size_(force_size) {
-    if (contact_map.size_ != nk_) {
+      : Base(ndx, nu, 3), contact_map_(contact_map),
+        nk_(size_t(nu) / size_t(force_size)), mass_(mass), gravity_(gravity),
+        force_size_(force_size) {
+    if (contact_map.getSize() != nk_) {
       ALIGATOR_DOMAIN_ERROR(
           fmt::format("Contact ids and nk should be the same: now "
                       "({} and {}).",
-                      contact_map.size_, nk_));
+                      contact_map.getSize(), nk_));
     }
   }
 
   void evaluate(const ConstVectorRef &, const ConstVectorRef &u,
-                BaseData &data) const;
+                const ConstVectorRef &, BaseData &data) const;
 
   void computeJacobians(const ConstVectorRef &, const ConstVectorRef &,
-                        BaseData &data) const;
+                        const ConstVectorRef &, BaseData &data) const;
 
   shared_ptr<BaseData> createData() const {
     return std::make_shared<Data>(this);
@@ -77,6 +74,8 @@ struct CentroidalAccelerationDataTpl : StageFunctionDataTpl<Scalar> {
 
 } // namespace aligator
 
+#include "aligator/modelling/centroidal/centroidal-acceleration.hxx"
+
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-#include "aligator/modelling/centroidal/centroidal-acceleration.txx"
+#include "./centroidal-acceleration.txx"
 #endif

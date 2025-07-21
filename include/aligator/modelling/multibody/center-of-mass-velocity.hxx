@@ -10,9 +10,10 @@ template <typename Scalar>
 void CenterOfMassVelocityResidualTpl<Scalar>::evaluate(const ConstVectorRef &x,
                                                        BaseData &data) const {
   Data &d = static_cast<Data &>(data);
+  const Model &model = *pin_model_;
   pinocchio::DataTpl<Scalar> &pdata = d.pin_data_;
-  pinocchio::centerOfMass(pin_model_, pdata, x.head(pin_model_.nq),
-                          x.segment(pin_model_.nq, pin_model_.nv));
+  pinocchio::centerOfMass(model, pdata, x.head(model.nq),
+                          x.segment(model.nq, model.nv));
 
   d.value_ = pdata.vcom[0] - v_ref_;
 }
@@ -21,23 +22,23 @@ template <typename Scalar>
 void CenterOfMassVelocityResidualTpl<Scalar>::computeJacobians(
     const ConstVectorRef &x, BaseData &data) const {
   Data &d = static_cast<Data &>(data);
+  const Model &model = *pin_model_;
   pinocchio::DataTpl<Scalar> &pdata = d.pin_data_;
 
-  pinocchio::centerOfMass(pin_model_, pdata, x.head(pin_model_.nq),
-                          x.segment(pin_model_.nq, pin_model_.nv));
-  pinocchio::getCenterOfMassVelocityDerivatives(pin_model_, pdata, d.fJf_);
-  d.Jx_.leftCols(pin_model_.nv) = d.fJf_;
+  pinocchio::centerOfMass(model, pdata, x.head(model.nq),
+                          x.segment(model.nq, model.nv));
+  pinocchio::getCenterOfMassVelocityDerivatives(model, pdata, d.fJf_);
+  d.Jx_.leftCols(model.nv) = d.fJf_;
 
-  pinocchio::jacobianCenterOfMass(pin_model_, pdata, x.head(pin_model_.nq));
-  d.Jx_.rightCols(pin_model_.nv) = pdata.Jcom;
+  pinocchio::jacobianCenterOfMass(model, pdata, x.head(model.nq));
+  d.Jx_.rightCols(model.nv) = pdata.Jcom;
 }
 
 template <typename Scalar>
 CenterOfMassVelocityDataTpl<Scalar>::CenterOfMassVelocityDataTpl(
     const CenterOfMassVelocityResidualTpl<Scalar> &model)
-    : Base(model.ndx1, model.nu, 3)
-    , pin_data_(model.pin_model_)
-    , fJf_(3, model.pin_model_.nv) {
+    : Base(model.ndx1, model.nu, model.ndx2, 3), pin_data_(*model.pin_model_),
+      fJf_(3, model.pin_model_->nv) {
   fJf_.setZero();
 }
 

@@ -1,8 +1,6 @@
 /// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 #pragma once
 
-#include "aligator/fwd.hpp"
-#ifdef ALIGATOR_WITH_PINOCCHIO
 #include "aligator/modelling/dynamics/kinodynamics-fwd.hpp"
 
 #include <pinocchio/algorithm/centroidal-derivatives.hpp>
@@ -17,22 +15,19 @@ namespace dynamics {
 
 template <typename Scalar>
 KinodynamicsFwdDynamicsTpl<Scalar>::KinodynamicsFwdDynamicsTpl(
-    const Manifold &state, const Model &model, const Vector3s &gravity,
+    const ManifoldPtr &state, const Model &model, const Vector3s &gravity,
     const std::vector<bool> &contact_states,
     const std::vector<pinocchio::FrameIndex> &contact_ids, const int force_size)
-    : Base(state, model.nv - 6 + int(contact_states.size()) * force_size)
-    , space_(state)
-    , pin_model_(model)
-    , gravity_(gravity)
-    , force_size_(force_size)
-    , contact_states_(contact_states)
-    , contact_ids_(contact_ids) {
+    : Base(state, model.nv - 6 + int(contact_states.size()) * force_size),
+      space_(state), pin_model_(model), gravity_(gravity),
+      force_size_(force_size), contact_states_(contact_states),
+      contact_ids_(contact_ids) {
   mass_ = pinocchio::computeTotalMass(pin_model_);
   if (contact_ids_.size() != contact_states_.size()) {
     ALIGATOR_DOMAIN_ERROR(
-        "contact_ids and contact_states should have same size: "
-        "now ({} and {}).",
-        contact_ids_.size(), contact_states_.size());
+        fmt::format("contact_ids and contact_states should have same size: "
+                    "now ({} and {}).",
+                    contact_ids_.size(), contact_states_.size()));
   }
 }
 
@@ -42,9 +37,9 @@ void KinodynamicsFwdDynamicsTpl<Scalar>::forward(const ConstVectorRef &x,
                                                  BaseData &data) const {
   Data &d = static_cast<Data &>(data);
   pinocchio::DataTpl<Scalar> &pdata = d.pin_data_;
-  const ConstVectorRef q = x.head(pin_model_.nq);
-  const ConstVectorRef v = x.tail(pin_model_.nv);
-  const ConstVectorRef a = u.tail(pin_model_.nv - 6);
+  const auto q = x.head(pin_model_.nq);
+  const auto v = x.tail(pin_model_.nv);
+  const auto a = u.tail(pin_model_.nv - 6);
 
   pinocchio::ccrba(pin_model_, pdata, q, v);  // Compute Ag
   pinocchio::dccrba(pin_model_, pdata, q, v); // Compute Ag_dot
@@ -102,9 +97,9 @@ void KinodynamicsFwdDynamicsTpl<Scalar>::dForward(const ConstVectorRef &x,
                                                   BaseData &data) const {
   Data &d = static_cast<Data &>(data);
   pinocchio::DataTpl<Scalar> &pdata = d.pin_data_;
-  const ConstVectorRef q = x.head(pin_model_.nq);
-  const ConstVectorRef v = x.tail(pin_model_.nv);
-  const ConstVectorRef a = u.tail(pin_model_.nv - 6);
+  const auto q = x.head(pin_model_.nq);
+  const auto v = x.tail(pin_model_.nv);
+  const auto a = u.tail(pin_model_.nv - 6);
 
   pinocchio::centerOfMass(pin_model_, pdata, q, v);
   pinocchio::jacobianCenterOfMass(pin_model_, pdata, q);
@@ -205,18 +200,12 @@ KinodynamicsFwdDynamicsTpl<Scalar>::createData() const {
 template <typename Scalar>
 KinodynamicsFwdDataTpl<Scalar>::KinodynamicsFwdDataTpl(
     const KinodynamicsFwdDynamicsTpl<Scalar> *model)
-    : Base(model->ndx(), model->nu())
-    , pin_data_(model->pin_model_)
-    , dh_dq_(6, model->pin_model_.nv)
-    , dhdot_dq_(6, model->pin_model_.nv)
-    , dhdot_dv_(6, model->pin_model_.nv)
-    , dhdot_da_(6, model->pin_model_.nv)
-    , temp1_(6, 3)
-    , temp2_(3, model->pin_model_.nv)
-    , fJf_(6, model->pin_model_.nv)
-    , v0_(model->pin_model_.nv)
-    , a0_(model->pin_model_.nv)
-    , PivLU_(6) {
+    : Base(model->ndx(), model->nu()), pin_data_(model->pin_model_),
+      dh_dq_(6, model->pin_model_.nv), dhdot_dq_(6, model->pin_model_.nv),
+      dhdot_dv_(6, model->pin_model_.nv), dhdot_da_(6, model->pin_model_.nv),
+      temp1_(6, 3), temp2_(3, model->pin_model_.nv),
+      fJf_(6, model->pin_model_.nv), v0_(model->pin_model_.nv),
+      a0_(model->pin_model_.nv), PivLU_(6) {
   this->Jx_.topRightCorner(model->pin_model_.nv, model->pin_model_.nv)
       .setIdentity();
   this->Ju_
@@ -238,4 +227,3 @@ KinodynamicsFwdDataTpl<Scalar>::KinodynamicsFwdDataTpl(
 }
 } // namespace dynamics
 } // namespace aligator
-#endif

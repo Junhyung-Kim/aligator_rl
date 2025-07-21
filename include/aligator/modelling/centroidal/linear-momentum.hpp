@@ -25,8 +25,7 @@ public:
   using Data = LinearMomentumDataTpl<Scalar>;
 
   LinearMomentumResidualTpl(const int ndx, const int nu, const Vector3s &h_ref)
-      : Base(ndx, nu, 3)
-      , h_ref_(h_ref) {}
+      : Base(ndx, nu, 3), h_ref_(h_ref) {}
 
   const Vector3s &getReference() const { return h_ref_; }
   void setReference(const Eigen::Ref<const Vector3s> &h_new) { h_ref_ = h_new; }
@@ -53,6 +52,8 @@ struct LinearMomentumDataTpl : StageFunctionDataTpl<Scalar> {
 
 } // namespace aligator
 
+#include "aligator/modelling/centroidal/linear-momentum.hxx"
+
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-#include "aligator/modelling/centroidal/linear-momentum.txx"
+#include "./linear-momentum.txx"
 #endif

@@ -7,17 +7,16 @@ namespace aligator {
 namespace dynamics {
 template <typename Scalar>
 IntegratorEulerTpl<Scalar>::IntegratorEulerTpl(
-    const xyz::polymorphic<ODEType> &cont_dynamics, const Scalar timestep)
-    : Base(cont_dynamics)
-    , timestep_(timestep) {}
+    const shared_ptr<ODEType> &cont_dynamics, const Scalar timestep)
+    : Base(cont_dynamics), timestep_(timestep) {}
 
 template <typename Scalar>
 void IntegratorEulerTpl<Scalar>::forward(
     const ConstVectorRef &x, const ConstVectorRef &u,
     ExplicitDynamicsDataTpl<Scalar> &data) const {
   Data &d = static_cast<Data &>(data);
-  ContinuousDynamicsDataTpl<Scalar> &cdata =
-      static_cast<ContinuousDynamicsDataTpl<Scalar> &>(*d.continuous_data);
+  ODEDataTpl<Scalar> &cdata =
+      static_cast<ODEDataTpl<Scalar> &>(*d.continuous_data);
   this->ode_->forward(x, u, cdata);
   d.dx_ = timestep_ * cdata.xdot_;
   this->space_next().integrate(x, d.dx_, d.xnext_);
@@ -28,8 +27,8 @@ void IntegratorEulerTpl<Scalar>::dForward(
     const ConstVectorRef &x, const ConstVectorRef &u,
     ExplicitDynamicsDataTpl<Scalar> &data) const {
   Data &d = static_cast<Data &>(data);
-  ContinuousDynamicsDataTpl<Scalar> &cdata =
-      static_cast<ContinuousDynamicsDataTpl<Scalar> &>(*d.continuous_data);
+  ODEDataTpl<Scalar> &cdata =
+      static_cast<ODEDataTpl<Scalar> &>(*d.continuous_data);
 
   // d(dx)_z = dt * df_dz
   // then transport to x+dx

@@ -59,22 +59,25 @@ box_set = constraints.BoxConstraint(umin, umax)
 for i in range(nsteps):
     stm = aligator.StageModel(cost, dyn_model)
     if args.bounds:
-        stm.addConstraint(aligator.ControlErrorResidual(space.ndx, nu), box_set)
+        stm.addConstraint(
+            func=aligator.ControlErrorResidual(space.ndx, nu),
+            cstr_set=box_set,
+        )
     stages.append(stm)
 
 problem = aligator.TrajOptProblem(x0, stages, term_cost)
 if args.term_cstr:
-    problem.addTerminalConstraint(
+    term_cstr = aligator.StageConstraint(
         aligator.StateErrorResidual(space, nu, target),
         constraints.EqualityConstraintSet(),
     )
+    problem.addTerminalConstraint(term_cstr)
 
 tol = 1e-3
-mu_init = 1e-2
+mu_init = 0.01
 solver = aligator.SolverProxDDP(tol, mu_init=mu_init, verbose=aligator.VERBOSE)
 solver.max_iters = 200
-solver.rollout_type = aligator.ROLLOUT_NONLINEAR
-solver.linear_solver_choice = aligator.LQ_SOLVER_STAGEDENSE
+solver.rollout_type = aligator.ROLLOUT_LINEAR
 solver.setup(problem)
 
 
@@ -96,10 +99,7 @@ if args.plot:
     from aligator.utils.plotting import plot_controls_traj
 
     times = np.linspace(0, Tf, nsteps + 1)
-    fig1, axes = plot_controls_traj(
-        times, res.us, ncols=1, rmodel=rmodel, figsize=(6.4, 3.2)
-    )
-    plt.title("Controls (N/m)")
+    fig1 = plot_controls_traj(times, res.us, ncols=1, rmodel=rmodel, figsize=(6.4, 3.2))
     fig1.tight_layout()
     xs = np.stack(res.xs)
     vs = xs[:, nq:]
@@ -107,17 +107,15 @@ if args.plot:
     theta_s = np.zeros((nsteps + 1, 2))
     theta_s0 = space.difference(space.neutral(), x0)[:2]
     theta_s = theta_s0 + np.cumsum(vs * timestep, axis=0)
-    fig2 = plt.figure(figsize=(6.4, 3.2))
-    plt.subplot(1, 2, 1)
+    fig2 = plt.figure(figsize=(6.4, 6.4))
+    plt.subplot(211)
     plt.plot(times, theta_s, label=("$\\theta_0$", "$\\theta_1$"))
-    plt.title("Joint angles (rad)")
-    plt.xlabel("Time (s)")
+    plt.title("Joint angles")
     plt.legend()
-    plt.subplot(1, 2, 2)
+    plt.subplot(212)
     plt.plot(times, xs[:, nq:], label=("$\\dot\\theta_0$", "$\\dot\\theta_1$"))
     plt.legend()
-    plt.title("Joint velocities (rad/s)")
-    plt.xlabel("Time (s)")
+    plt.title("Joint velocities")
     fig2.tight_layout()
 
     _fig_dict = {"controls": fig1, "velocities": fig2}

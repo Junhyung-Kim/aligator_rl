@@ -1,11 +1,10 @@
 #pragma once
 
-#include "aligator/solvers/results-base.hpp"
+#include "aligator/core/results-base.hpp"
 
 namespace aligator {
 
-template <typename Scalar>
-struct ResultsFDDPTpl final : ResultsBaseTpl<Scalar> {
+template <typename Scalar> struct ResultsFDDPTpl : ResultsBaseTpl<Scalar> {
 
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = ResultsBaseTpl<Scalar>;
@@ -15,23 +14,22 @@ struct ResultsFDDPTpl final : ResultsBaseTpl<Scalar> {
   using Base::us;
   using Base::xs;
 
-  ResultsFDDPTpl()
-      : Base() {}
+  ResultsFDDPTpl() : Base() {}
   explicit ResultsFDDPTpl(const TrajOptProblemTpl<Scalar> &problem);
 };
 
 template <typename Scalar>
 ResultsFDDPTpl<Scalar>::ResultsFDDPTpl(
     const TrajOptProblemTpl<Scalar> &problem) {
-  if (!problem.checkIntegrity())
-    ALIGATOR_RUNTIME_ERROR("Problem failed integrity check.");
+  problem.checkIntegrity();
   using StageModel = StageModelTpl<Scalar>;
 
   const std::size_t nsteps = problem.numSteps();
   xs.resize(nsteps + 1);
   us.resize(nsteps);
 
-  problem.initializeSolution(xs, us);
+  xs_default_init(problem, xs);
+  us_default_init(problem, us);
 
   gains_.resize(nsteps);
 

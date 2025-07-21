@@ -1,4 +1,4 @@
-#include "aligator/core/explicit-dynamics.hxx"
+#include "aligator/core/explicit-dynamics.hpp"
 
 namespace aligator {
 

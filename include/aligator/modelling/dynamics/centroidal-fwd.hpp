@@ -4,7 +4,7 @@
 #include "aligator/modelling/dynamics/ode-abstract.hpp"
 #include "aligator/modelling/contact-map.hpp"
 
-#include "aligator/core/vector-space.hpp"
+#include <proxsuite-nlp/modelling/spaces/vector-space.hpp>
 
 namespace aligator {
 namespace dynamics {
@@ -26,16 +26,17 @@ struct CentroidalFwdDynamicsTpl : ODEAbstractTpl<_Scalar> {
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = ODEAbstractTpl<Scalar>;
-  using BaseData = ContinuousDynamicsDataTpl<Scalar>;
+  using BaseData = ODEDataTpl<Scalar>;
   using ContDataAbstract = ContinuousDynamicsDataTpl<Scalar>;
   using Data = CentroidalFwdDataTpl<Scalar>;
-  using Manifold = ::aligator::VectorSpaceTpl<Scalar>;
+  using Manifold = proxsuite::nlp::VectorSpaceTpl<Scalar>;
+  using ManifoldPtr = shared_ptr<Manifold>;
   using Matrix3s = Eigen::Matrix<Scalar, 3, 3>;
   using ContactMap = ContactMapTpl<Scalar>;
 
   using Base::nu_;
 
-  Manifold space_;
+  ManifoldPtr space_;
   std::size_t nk_;
   double mass_;
   Vector3s gravity_;
@@ -44,7 +45,7 @@ struct CentroidalFwdDynamicsTpl : ODEAbstractTpl<_Scalar> {
 
   const Manifold &space() const { return *space_; }
 
-  CentroidalFwdDynamicsTpl(const Manifold &state, const double mass,
+  CentroidalFwdDynamicsTpl(const ManifoldPtr &state, const double mass,
                            const Vector3s &gravity,
                            const ContactMap &contact_map, const int force_size);
 
@@ -56,9 +57,8 @@ struct CentroidalFwdDynamicsTpl : ODEAbstractTpl<_Scalar> {
   shared_ptr<ContDataAbstract> createData() const;
 };
 
-template <typename Scalar>
-struct CentroidalFwdDataTpl : ContinuousDynamicsDataTpl<Scalar> {
-  using Base = ContinuousDynamicsDataTpl<Scalar>;
+template <typename Scalar> struct CentroidalFwdDataTpl : ODEDataTpl<Scalar> {
+  using Base = ODEDataTpl<Scalar>;
   using Matrix3s = Eigen::Matrix<Scalar, 3, 3>;
 
   Matrix3s Jtemp_;

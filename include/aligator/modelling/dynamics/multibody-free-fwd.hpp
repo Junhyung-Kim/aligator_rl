@@ -3,8 +3,7 @@
 
 #include "aligator/modelling/dynamics/ode-abstract.hpp"
 
-#ifdef ALIGATOR_WITH_PINOCCHIO
-#include "aligator/modelling/spaces/multibody.hpp"
+#include <proxsuite-nlp/modelling/spaces/multibody.hpp>
 #include <pinocchio/multibody/data.hpp>
 
 namespace aligator {
@@ -27,22 +26,23 @@ struct MultibodyFreeFwdDynamicsTpl : ODEAbstractTpl<_Scalar> {
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = ODEAbstractTpl<Scalar>;
-  using BaseData = ContinuousDynamicsDataTpl<Scalar>;
+  using BaseData = ODEDataTpl<Scalar>;
   using ContDataAbstract = ContinuousDynamicsDataTpl<Scalar>;
   using Data = MultibodyFreeFwdDataTpl<Scalar>;
-  using Manifold = MultibodyPhaseSpace<Scalar>;
-  using PolyManifold = xyz::polymorphic<Manifold>;
+  using Manifold = proxsuite::nlp::MultibodyPhaseSpace<Scalar>;
+  using ManifoldPtr = shared_ptr<Manifold>;
 
   using Base::nu_;
 
-  Manifold space_;
+  ManifoldPtr space_;
   MatrixXs actuation_matrix_;
 
-  const Manifold &space() const { return space_; }
-  int ntau() const { return space_.getModel().nv; }
+  const Manifold &space() const { return *space_; }
+  int ntau() const { return space_->getModel().nv; }
 
-  MultibodyFreeFwdDynamicsTpl(const Manifold &state, const MatrixXs &actuation);
-  MultibodyFreeFwdDynamicsTpl(const Manifold &state);
+  MultibodyFreeFwdDynamicsTpl(const ManifoldPtr &state,
+                              const MatrixXs &actuation);
+  MultibodyFreeFwdDynamicsTpl(const ManifoldPtr &state);
 
   /**
    * @brief  Determine whether the system is underactuated.
@@ -68,9 +68,8 @@ private:
   Eigen::Index act_matrix_rank;
 };
 
-template <typename Scalar>
-struct MultibodyFreeFwdDataTpl : ContinuousDynamicsDataTpl<Scalar> {
-  using Base = ContinuousDynamicsDataTpl<Scalar>;
+template <typename Scalar> struct MultibodyFreeFwdDataTpl : ODEDataTpl<Scalar> {
+  using Base = ODEDataTpl<Scalar>;
   using VectorXs = typename math_types<Scalar>::VectorXs;
   using MatrixXs = typename math_types<Scalar>::MatrixXs;
   using PinDataType = pinocchio::DataTpl<Scalar>;
@@ -84,7 +83,8 @@ struct MultibodyFreeFwdDataTpl : ContinuousDynamicsDataTpl<Scalar> {
 } // namespace dynamics
 } // namespace aligator
 
+#include "aligator/modelling/dynamics/multibody-free-fwd.hxx"
+
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "aligator/modelling/dynamics/multibody-free-fwd.txx"
-#endif
 #endif

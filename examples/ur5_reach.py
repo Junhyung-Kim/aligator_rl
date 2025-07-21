@@ -8,7 +8,6 @@ import matplotlib.gridspec as gridspec
 
 from aligator import constraints, manifolds, dynamics  # noqa
 from pinocchio.visualize import MeshcatVisualizer
-import hppfcl
 
 from utils import ArgsBase, get_endpoint_traj
 
@@ -17,7 +16,6 @@ class Args(ArgsBase):
     plot: bool = True
     fddp: bool = False
     bounds: bool = False
-    collisions: bool = False
 
 
 args = Args().parse_args()
@@ -34,30 +32,6 @@ vizer = MeshcatVisualizer(rmodel, robot.collision_model, robot.visual_model, dat
 vizer.initViewer(open=args.display, loadModel=True)
 vizer.setBackgroundColor()
 
-fr_name = "universe"
-fr_id = rmodel.getFrameId(fr_name)
-joint_id = rmodel.frames[fr_id].parentJoint
-if args.collisions:
-    obstacle_loc = pin.SE3.Identity()
-    obstacle_loc.translation[0] = 0.3
-    obstacle_loc.translation[1] = 0.5
-    obstacle_loc.translation[2] = 0.3
-    geom_object = pin.GeometryObject(
-        "capsule", fr_id, joint_id, hppfcl.Capsule(0.05, 0.4), obstacle_loc
-    )
-
-    fr_id2 = rmodel.getFrameId("wrist_3_joint")
-    joint_id2 = rmodel.frames[fr_id2].parentJoint
-    geom_object2 = pin.GeometryObject(
-        "endeffector", fr_id2, joint_id2, hppfcl.Sphere(0.1), pin.SE3.Identity()
-    )
-
-    geometry = pin.GeometryModel()
-    ig_frame = geometry.addGeometryObject(geom_object)
-    ig_frame2 = geometry.addGeometryObject(geom_object2)
-    geometry.addCollisionPair(pin.CollisionPair(ig_frame, ig_frame2))
-
-    vizer.addGeometryObject(geom_object, [1.0, 1.0, 0.5, 1.0])
 
 x0 = space.neutral()
 
@@ -87,12 +61,6 @@ wt_u = 1e-4 * np.eye(nu)
 tool_name = "tool0"
 tool_id = rmodel.getFrameId(tool_name)
 target_pos = np.array([0.15, 0.65, 0.5])
-target_place = pin.SE3.Identity()
-target_place.translation = target_pos
-target_object = pin.GeometryObject(
-    "target", fr_id, joint_id, hppfcl.Sphere(0.05), target_place
-)
-vizer.addGeometryObject(target_object, [0.5, 0.5, 1.0, 1.0])
 print(target_pos)
 
 frame_fn = aligator.FrameTranslationResidual(ndx, nu, rmodel, target_pos, tool_id)
@@ -103,18 +71,14 @@ frame_vel_fn = aligator.FrameVelocityResidual(
 )
 wt_x_term = wt_x.copy()
 wt_x_term[:] = 1e-4
-wt_frame_pos = 100.0 * np.eye(frame_fn.nr)
+wt_frame_pos = 10.0 * np.eye(frame_fn.nr)
 wt_frame_vel = 100.0 * np.ones(frame_vel_fn.nr)
 wt_frame_vel = np.diag(wt_frame_vel)
 
 term_cost = aligator.CostStack(space, nu)
-term_cost.addCost("reg", aligator.QuadraticCost(wt_x_term, wt_u * 0))
-term_cost.addCost(
-    "frame", aligator.QuadraticResidualCost(space, frame_fn, wt_frame_pos)
-)
-term_cost.addCost(
-    "vel", aligator.QuadraticResidualCost(space, frame_vel_fn, wt_frame_vel)
-)
+term_cost.addCost(aligator.QuadraticCost(wt_x_term, wt_u * 0))
+term_cost.addCost(aligator.QuadraticResidualCost(space, frame_fn, wt_frame_pos))
+term_cost.addCost(aligator.QuadraticResidualCost(space, frame_vel_fn, wt_frame_vel))
 
 u_max = rmodel.effortLimit
 u_min = -u_max
@@ -123,7 +87,7 @@ u_min = -u_max
 def make_control_bounds():
     fun = aligator.ControlErrorResidual(ndx, nu)
     cstr_set = constraints.BoxConstraint(u_min, u_max)
-    return (fun, cstr_set)
+    return aligator.StageConstraint(fun, cstr_set)
 
 
 def computeQuasistatic(model: pin.Model, x0, a):
@@ -139,18 +103,14 @@ init_xs = aligator.rollout(discrete_dynamics, x0, init_us)
 
 
 stages = []
+
 for i in range(nsteps):
     rcost = aligator.CostStack(space, nu)
-    rcost.addCost("reg", aligator.QuadraticCost(wt_x * dt, wt_u * dt))
+    rcost.addCost(aligator.QuadraticCost(wt_x * dt, wt_u * dt))
 
     stm = aligator.StageModel(rcost, discrete_dynamics)
-    if args.collisions:
-        # Distance to obstacle constrained between 0.1 and 100 m
-        cstr_set = constraints.BoxConstraint(np.array([0.1]), np.array([100]))
-        frame_col = aligator.FrameCollisionResidual(ndx, nu, rmodel, geometry, 0)
-        stm.addConstraint(frame_col, cstr_set)
     if args.bounds:
-        stm.addConstraint(*make_control_bounds())
+        stm.addConstraint(make_control_bounds())
     stages.append(stm)
 
 
@@ -158,14 +118,17 @@ problem = aligator.TrajOptProblem(x0, stages, term_cost=term_cost)
 tol = 1e-7
 
 mu_init = 1e-7
+rho_init = 0.0
 verbose = aligator.VerboseLevel.VERBOSE
-max_iters = 500
-solver = aligator.SolverProxDDP(tol, mu_init, max_iters=max_iters, verbose=verbose)
+max_iters = 40
+solver = aligator.SolverProxDDP(
+    tol, mu_init, rho_init, max_iters=max_iters, verbose=verbose
+)
 solver.rollout_type = aligator.ROLLOUT_NONLINEAR
-solver.sa_strategy = aligator.SA_LINESEARCH_NONMONOTONE
+solver.sa_strategy = aligator.SA_LINESEARCH
 if args.fddp:
     solver = aligator.SolverFDDP(tol, verbose, max_iters=max_iters)
-cb = aligator.HistoryCallback(solver)
+cb = aligator.HistoryCallback()
 solver.registerCallback("his", cb)
 solver.setup(problem)
 solver.run(problem, init_xs, init_us)
@@ -227,10 +190,12 @@ ax.set_zlabel("$z$")
 
 plt.figure()
 
+cb_store: aligator.HistoryCallback.history_storage = cb.storage
+
 nrang = range(1, results.num_iters + 1)
 ax: plt.Axes = plt.gca()
-plt.plot(nrang, cb.prim_infeas, ls="--", marker=".", label="primal err")
-plt.plot(nrang, cb.dual_infeas, ls="--", marker=".", label="dual err")
+plt.plot(nrang, cb_store.prim_infeas, ls="--", marker=".", label="primal err")
+plt.plot(nrang, cb_store.dual_infeas, ls="--", marker=".", label="dual err")
 ax.set_xlabel("iter")
 ax.set_yscale("log")
 plt.legend()

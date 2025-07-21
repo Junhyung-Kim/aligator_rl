@@ -12,8 +12,8 @@ from aligator import manifolds
 model = pin.buildSampleModelHumanoid()
 rdata: pin.Data = model.createData()
 np.random.seed(0)
-EPS = 1e-7
-ATOL = 2 * EPS**0.5
+FD_EPS = 1e-8
+THRESH = 2 * FD_EPS**0.5
 
 nq = model.nq
 nv = model.nv
@@ -27,7 +27,7 @@ def sample_gauss(space):
     return x0, d, x1
 
 
-def test_com_translation():
+def test_com_placement():
     space = manifolds.MultibodyConfiguration(model)
     ndx = space.ndx
     x0 = space.neutral()
@@ -55,22 +55,22 @@ def test_com_translation():
     assert J.shape == realJ.shape
     assert np.allclose(fdata.Jx[:, :nv], realJ)
 
-    fun_fd = aligator.FiniteDifferenceHelper(space, fun, EPS)
+    fun_fd = aligator.FiniteDifferenceHelper(space, fun, FD_EPS)
     fdata2 = fun_fd.createData()
-    fun_fd.evaluate(x0, u0, fdata2)
+    fun_fd.evaluate(x0, u0, x0, fdata2)
     assert np.allclose(fdata.value, fdata2.value)
 
-    fun_fd.computeJacobians(x0, u0, fdata2)
+    fun_fd.computeJacobians(x0, u0, x0, fdata2)
     J_fd = fdata2.Jx[:]
     assert fdata.Jx.shape == J_fd.shape
 
     for i in range(100):
         x, d, x0 = sample_gauss(space)
-        fun.evaluate(x0, u0, fdata)
-        fun.computeJacobians(x0, u0, fdata)
-        fun_fd.evaluate(x0, u0, fdata2)
-        fun_fd.computeJacobians(x0, u0, fdata2)
-        assert np.allclose(fdata.Jx, fdata2.Jx, ATOL)
+        fun.evaluate(x0, u0, x0, fdata)
+        fun.computeJacobians(x0, u0, x0, fdata)
+        fun_fd.evaluate(x0, u0, x0, fdata2)
+        fun_fd.computeJacobians(x0, u0, x0, fdata2)
+        assert np.allclose(fdata.Jx, fdata2.Jx, THRESH)
 
 
 def test_frame_velocity():
@@ -94,59 +94,23 @@ def test_frame_velocity():
 
     fun.computeJacobians(x0, fdata)
 
-    fun_fd = aligator.FiniteDifferenceHelper(space, fun, EPS)
+    fun_fd = aligator.FiniteDifferenceHelper(space, fun, FD_EPS)
     fdata2 = fun_fd.createData()
-    fun_fd.evaluate(x0, u0, fdata2)
-    fun_fd.computeJacobians(x0, u0, fdata2)
+    fun_fd.evaluate(x0, u0, x0, fdata2)
+    fun_fd.computeJacobians(x0, u0, x0, fdata2)
     assert fdata.Jx.shape == fdata2.Jx.shape
 
     for i in range(100):
         x, d, x0 = sample_gauss(space)
         fun.evaluate(x0, fdata)
         fun.computeJacobians(x0, fdata)
-        fun_fd.evaluate(x0, u0, fdata2)
-        fun_fd.computeJacobians(x0, u0, fdata2)
+        fun_fd.evaluate(x0, u0, x0, fdata2)
+        fun_fd.computeJacobians(x0, u0, x0, fdata2)
         print(i)
         print(fdata.Jx)
         print(fdata2.Jx)
         print(fdata.Jx)
-        assert np.allclose(fdata.Jx, fdata2.Jx, ATOL)
-
-
-def test_dcm_position():
-    space = manifolds.MultibodyPhaseSpace(model)
-    x, d, x0 = sample_gauss(space)
-    q0, v0 = x0[: model.nq], x0[model.nq :]
-    u0 = np.zeros(nu)
-
-    pin.centerOfMass(model, rdata, q0, v0)
-    dcm_ref = np.array([0.1, 0.1, 0.1])
-    alpha = 0.1
-
-    fun = aligator.DCMPositionResidual(space.ndx, nu, model, dcm_ref, alpha)
-    assert np.allclose(dcm_ref, fun.getReference())
-
-    fdata = fun.createData()
-    fun.evaluate(x0, fdata)
-    residual = rdata.com[0] + alpha * rdata.vcom[0] - dcm_ref
-
-    assert np.allclose(fdata.value, residual)
-
-    fun.computeJacobians(x0, fdata)
-
-    fun_fd = aligator.FiniteDifferenceHelper(space, fun, EPS)
-    fdata2 = fun_fd.createData()
-    fun_fd.evaluate(x0, u0, fdata2)
-    fun_fd.computeJacobians(x0, u0, fdata2)
-    assert fdata.Jx.shape == fdata2.Jx.shape
-
-    for i in range(100):
-        x, d, x0 = sample_gauss(space)
-        fun.evaluate(x0, fdata)
-        fun.computeJacobians(x0, fdata)
-        fun_fd.evaluate(x0, u0, fdata2)
-        fun_fd.computeJacobians(x0, u0, fdata2)
-        assert np.allclose(fdata.Jx, fdata2.Jx, ATOL)
+        assert np.allclose(fdata.Jx, fdata2.Jx, THRESH)
 
 
 if __name__ == "__main__":

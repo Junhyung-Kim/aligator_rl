@@ -8,15 +8,13 @@ namespace aligator {
 
 template <typename Scalar>
 LogResidualCostTpl<Scalar>::LogResidualCostTpl(
-    xyz::polymorphic<Manifold> space, xyz::polymorphic<StageFunction> function,
+    shared_ptr<Manifold> space, shared_ptr<StageFunction> function,
     const ConstVectorRef &scale)
-    : Base(space, function->nu)
-    , barrier_weights_(scale)
-    , residual_(function) {
+    : Base(space, function->nu), barrier_weights_(scale), residual_(function) {
   if (scale.size() != function->nr) {
-    ALIGATOR_RUNTIME_ERROR(
+    ALIGATOR_RUNTIME_ERROR(fmt::format(
         "scale argument dimension ({:d}) != function codimension ({:d})",
-        scale.size(), function->nr);
+        scale.size(), function->nr));
   }
   bool negs = (scale.array() <= 0.0).any();
   if (negs) {
@@ -26,7 +24,7 @@ LogResidualCostTpl<Scalar>::LogResidualCostTpl(
 
 template <typename Scalar>
 LogResidualCostTpl<Scalar>::LogResidualCostTpl(
-    xyz::polymorphic<Manifold> space, xyz::polymorphic<StageFunction> function,
+    shared_ptr<Manifold> space, shared_ptr<StageFunction> function,
     const Scalar scale)
     : LogResidualCostTpl(space, function,
                          VectorXs::Constant(function->nr, scale)) {}
@@ -36,7 +34,7 @@ void LogResidualCostTpl<Scalar>::evaluate(const ConstVectorRef &x,
                                           const ConstVectorRef &u,
                                           CostDataAbstract &data) const {
   Data &d = static_cast<Data &>(data);
-  residual_->evaluate(x, u, *d.residual_data);
+  residual_->evaluate(x, u, x, *d.residual_data);
   d.value_ =
       barrier_weights_.dot(d.residual_data->value_.array().log().matrix());
 }
@@ -48,7 +46,7 @@ void LogResidualCostTpl<Scalar>::computeGradients(
   Data &d = static_cast<Data &>(data);
   StageFunctionDataTpl<Scalar> &res_data = *d.residual_data;
   MatrixRef J = res_data.jac_buffer_.leftCols(data.grad_.size());
-  residual_->computeJacobians(x, u, res_data);
+  residual_->computeJacobians(x, u, x, res_data);
   d.grad_.setZero();
   VectorXs &v = res_data.value_;
   const int nrows = residual_->nr;

@@ -1,5 +1,5 @@
 #include "aligator/fwd.hpp"
-
+#ifdef ALIGATOR_PINOCCHIO_V3
 #include "aligator/modelling/multibody/constrained-rnea.hpp"
 
 namespace aligator {
@@ -16,3 +16,4 @@ template void underactuatedConstrainedInverseDynamics<
     const Eigen::MatrixBase<context::VectorRef> &);
 
 } // namespace aligator
+#endif

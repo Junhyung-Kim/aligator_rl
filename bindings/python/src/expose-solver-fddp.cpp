@@ -1,8 +1,8 @@
 #include "aligator/python/fwd.hpp"
 #include "aligator/python/visitors.hpp"
 #include "aligator/python/solvers.hpp"
-
 #include "aligator/solvers/fddp/solver-fddp.hpp"
+#include <mutex>
 
 namespace aligator::python {
 using context::Scalar;
@@ -10,15 +10,16 @@ using QParams = QFunctionTpl<Scalar>;
 using VParams = ValueFunctionTpl<Scalar>;
 } // namespace aligator::python
 
+
 namespace aligator {
 namespace python {
+
 
 void exposeFDDP() {
   using context::Manifold;
   using context::SolverFDDP;
   using Workspace = WorkspaceFDDPTpl<Scalar>;
   using Results = ResultsFDDPTpl<Scalar>;
-
   bp::class_<QParams>("QParams", "Q-function parameters.",
                       bp::init<int, int, int>(("self"_a, "ndx", "nu", "ndy")))
       .add_property("ntot", &QParams::ntot)
@@ -77,9 +78,15 @@ void exposeFDDP() {
            "reg_init"_a = 1e-9, "max_iters"_a = 1000)))
       .def_readwrite("reg_min", &SolverFDDP::reg_min_)
       .def_readwrite("reg_max", &SolverFDDP::reg_max_)
+      .def_readwrite("preg", &SolverFDDP::preg_)
       .def(SolverVisitor<SolverFDDP>())
       .def("run", &SolverFDDP::run,
-           ("self"_a, "problem", "xs_init", "us_init"));
+           ("self"_a, "problem", "xs_init", "us_init"))
+      .def("setRLPolicy", &SolverFDDP::setRLPolicy,
+           ("self"_a, "policy", "states", "alphas", "rewards", "next_states", "mutex"))
+      .def("getTransitions", &SolverFDDP::getTransitions,
+           bp::return_value_policy<bp::return_by_value>(),
+           ("self"_a));
 }
 
 } // namespace python

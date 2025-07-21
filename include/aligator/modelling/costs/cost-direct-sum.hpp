@@ -1,9 +1,9 @@
 /// @file
-/// @copyright Copyright (C) 2023 LAAS-CNRS, 2022-2025 INRIA
+/// @copyright Copyright (C) 2023 LAAS-CNRS, INRIA
 #pragma once
 
 #include "aligator/core/cost-abstract.hpp"
-#include "aligator/modelling/spaces/cartesian-product.hpp"
+#include <proxsuite-nlp/modelling/spaces/cartesian-product.hpp>
 
 namespace aligator {
 
@@ -13,18 +13,15 @@ template <typename _Scalar> struct DirectSumCostTpl : CostAbstractTpl<_Scalar> {
   using BaseCost = CostAbstractTpl<Scalar>;
   using BaseData = CostDataAbstractTpl<Scalar>;
   using Manifold = ManifoldAbstractTpl<Scalar>;
-  using PolyCost = xyz::polymorphic<BaseCost>;
 
   struct Data;
 
-  DirectSumCostTpl(const PolyCost &c1, const PolyCost &c2)
-      : BaseCost(c1->space * c2->space, c1->nu + c2->nu)
-      , c1_(c1)
-      , c2_(c2) {
-    assert(!c1.valueless_after_move() && !c2.valueless_after_move());
+  DirectSumCostTpl(shared_ptr<BaseCost> c1, shared_ptr<BaseCost> c2)
+      : BaseCost(c1->space * c2->space, c1->nu + c2->nu), c1_(c1), c2_(c2) {
+    assert(c1 != nullptr && c2 != nullptr);
   }
 
-  xyz::polymorphic<BaseCost> c1_, c2_;
+  shared_ptr<BaseCost> c1_, c2_;
 
   shared_ptr<BaseData> createData() const override;
 
@@ -36,9 +33,9 @@ template <typename _Scalar> struct DirectSumCostTpl : CostAbstractTpl<_Scalar> {
                        BaseData &data) const override;
 
 private:
-  using CartesianProduct = aligator::CartesianProductTpl<Scalar>;
+  using CartesianProduct = proxsuite::nlp::CartesianProductTpl<Scalar>;
   auto get_product_space() const {
-    return dynamic_cast<CartesianProduct const &>(*this->space);
+    return static_cast<CartesianProduct const *>(this->space.get());
   }
   static Data &data_cast(BaseData &data) { return static_cast<Data &>(data); }
 };
@@ -47,18 +44,17 @@ template <typename Scalar> struct DirectSumCostTpl<Scalar>::Data : BaseData {
 
   shared_ptr<BaseData> data1_, data2_;
   Data(const DirectSumCostTpl &model)
-      : BaseData(model.ndx(), model.nu)
-      , data1_(model.c1_->createData())
-      , data2_(model.c2_->createData()) {}
+      : BaseData(model.ndx(), model.nu), data1_(model.c1_->createData()),
+        data2_(model.c2_->createData()) {}
 };
 
 template <typename Scalar>
 void DirectSumCostTpl<Scalar>::evaluate(const ConstVectorRef &x,
                                         const ConstVectorRef &u,
                                         BaseData &data) const {
-  CartesianProduct const space = get_product_space();
+  CartesianProduct const *space = get_product_space();
   Data &d = data_cast(data);
-  auto xs = space.split(x);
+  auto xs = space->split(x);
   ConstVectorRef u1 = u.head(c1_->nu);
   ConstVectorRef u2 = u.tail(c2_->nu);
 
@@ -72,9 +68,9 @@ template <typename Scalar>
 void DirectSumCostTpl<Scalar>::computeGradients(const ConstVectorRef &x,
                                                 const ConstVectorRef &u,
                                                 BaseData &data) const {
-  CartesianProduct const space = get_product_space();
+  CartesianProduct const *space = get_product_space();
   Data &d = data_cast(data);
-  auto xs = space.split(x);
+  auto xs = space->split(x);
   ConstVectorRef u1 = u.head(c1_->nu);
   ConstVectorRef u2 = u.tail(c2_->nu);
 
@@ -94,9 +90,9 @@ template <typename Scalar>
 void DirectSumCostTpl<Scalar>::computeHessians(const ConstVectorRef &x,
                                                const ConstVectorRef &u,
                                                BaseData &data) const {
-  CartesianProduct const space = get_product_space();
+  CartesianProduct const *space = get_product_space();
   Data &d = data_cast(data);
-  auto xs = space.split(x);
+  auto xs = space->split(x);
   ConstVectorRef u1 = u.head(c1_->nu);
   ConstVectorRef u2 = u.tail(c2_->nu);
 
@@ -124,9 +120,9 @@ auto DirectSumCostTpl<Scalar>::createData() const -> shared_ptr<BaseData> {
 }
 
 template <typename Scalar>
-auto directSum(xyz::polymorphic<CostAbstractTpl<Scalar>> const &c1,
-               xyz::polymorphic<CostAbstractTpl<Scalar>> const &c2) {
-  return DirectSumCostTpl<Scalar>(c1, c2);
+auto directSum(shared_ptr<CostAbstractTpl<Scalar>> const &c1,
+               shared_ptr<CostAbstractTpl<Scalar>> const &c2) {
+  return std::make_shared<DirectSumCostTpl<Scalar>>(c1, c2);
 }
 
 } // namespace aligator

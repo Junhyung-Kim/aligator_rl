@@ -1,11 +1,13 @@
 """
-@Author  :   quentinll, ManifoldFR
-@License :   (C)Copyright 2022-2024 LAAS-CNRS, 2021-2025, INRIA
+@Time    :   2022/06/29 15:58:26
+@Author  :   quentinll
+@License :   (C)Copyright 2021-2022, INRIA
 """
 
 import pinocchio as pin
 import numpy as np
 import aligator
+import proxsuite_nlp
 import hppfcl as fcl
 import matplotlib.pyplot as plt
 
@@ -106,7 +108,7 @@ def create_pendulum(N, sincos=False):
 model, geom_model, data, geom_data, ddl = create_pendulum(1)
 dt = 0.01
 nu = model.nv
-space = aligator.manifolds.MultibodyPhaseSpace(model)
+space = proxsuite_nlp.manifolds.MultibodyPhaseSpace(model)
 nx = space.nx
 ndx = space.ndx
 cont_dyn = aligator.dynamics.MultibodyFreeFwdDynamics(space)
@@ -151,6 +153,7 @@ term_cost = aligator.CostStack(space, nu)
 umin = -20.0 * np.ones(nu)
 umax = +20.0 * np.ones(nu)
 ctrl_fn = aligator.ControlErrorResidual(ndx, np.zeros(nu))
+box_cstr = aligator.StageConstraint(ctrl_fn, constraints.BoxConstraint(umin, umax))
 
 nsteps = 200
 Tf = nsteps * dt
@@ -159,12 +162,13 @@ problem = aligator.TrajOptProblem(x0, nu, space, term_cost)
 for i in range(nsteps):
     stage = aligator.StageModel(rcost, dyn_model)
     if args.bounds:
-        stage.addConstraint(ctrl_fn, constraints.BoxConstraint(umin, umax))
+        stage.addConstraint(box_cstr)
     problem.addStage(stage)
 
 term_fun = aligator.FrameTranslationResidual(ndx, nu, model, target_pos, frame_id)
 if args.term_cstr:
-    problem.addTerminalConstraint(term_fun, constraints.EqualityConstraintSet())
+    term_cstr = aligator.StageConstraint(term_fun, constraints.EqualityConstraintSet())
+    problem.addTerminalConstraint(term_cstr)
 else:
     term_cost.addCost(
         aligator.QuadraticResidualCost(space, frame_err, np.diag(weights_frame_place))
@@ -175,7 +179,7 @@ verbose = aligator.VerboseLevel.VERBOSE
 TOL = 1e-6
 MAX_ITER = 200
 solver = aligator.SolverProxDDP(TOL, mu_init, max_iters=MAX_ITER, verbose=verbose)
-callback = aligator.HistoryCallback(solver)
+callback = aligator.HistoryCallback()
 solver.registerCallback("his", callback)
 
 u0 = pin.rnea(model, data, x0[:1], x0[1:], np.zeros(nv))
@@ -232,12 +236,12 @@ plt.savefig(ASSET_DIR / "pendulum_controls{}.pdf".format(TAG))
 if True:
     from proxsuite_nlp.utils import plot_pd_errs
 
-    prim_errs = callback.prim_infeas
-    dual_errs = callback.dual_infeas
+    prim_errs = callback.storage.prim_infeas
+    dual_errs = callback.storage.dual_infeas
     if len(prim_errs) != 0:
         plt.figure(figsize=(6.4, 4.8))
-        prim_tols = np.array(callback.prim_tols.tolist())
-        al_iters = np.array(callback.al_index.tolist())
+        prim_tols = np.array(callback.storage.prim_tols.tolist())
+        al_iters = np.array(callback.storage.al_iters.tolist())
 
         ax: plt.Axes = plt.subplot(111)
         plot_pd_errs(ax, prim_errs, dual_errs)

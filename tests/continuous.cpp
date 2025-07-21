@@ -1,24 +1,21 @@
-#include <boost/test/unit_test.hpp>
-
-#ifdef ALIGATOR_WITH_PINOCCHIO
 #include "aligator/modelling/dynamics/multibody-free-fwd.hpp"
 #include <pinocchio/parsers/sample-models.hpp>
-#endif
+
+#include <boost/test/unit_test.hpp>
 
 BOOST_AUTO_TEST_SUITE(continuous)
 
-#ifdef ALIGATOR_WITH_PINOCCHIO
 using namespace aligator;
 
 BOOST_AUTO_TEST_CASE(create_data) {
   pinocchio::Model model;
   pinocchio::buildModels::humanoidRandom(model);
 
-  using StateMultibody = aligator::MultibodyPhaseSpace<double>;
-  const StateMultibody state{model};
+  using StateMultibody = proxsuite::nlp::MultibodyPhaseSpace<double>;
+  auto spaceptr = std::make_shared<StateMultibody>(model);
   Eigen::MatrixXd B(model.nv, model.nv);
   B.setIdentity();
-  dynamics::MultibodyFreeFwdDynamicsTpl<double> contdyn(state, B);
+  dynamics::MultibodyFreeFwdDynamicsTpl<double> contdyn(spaceptr, B);
 
   using ContDataAbstract = dynamics::ContinuousDynamicsDataTpl<double>;
   using Data = dynamics::MultibodyFreeFwdDataTpl<double>;
@@ -29,7 +26,5 @@ BOOST_AUTO_TEST_CASE(create_data) {
   BOOST_CHECK_EQUAL(d2->dtau_du_.cols(), model.nv);
   BOOST_CHECK_EQUAL(d2->dtau_du_.rows(), model.nv);
 }
-
-#endif
 
 BOOST_AUTO_TEST_SUITE_END()

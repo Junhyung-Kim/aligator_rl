@@ -7,16 +7,15 @@ namespace aligator {
 namespace dynamics {
 template <typename Scalar>
 IntegratorRK2Tpl<Scalar>::IntegratorRK2Tpl(
-    const xyz::polymorphic<ODEType> &cont_dynamics, const Scalar timestep)
-    : Base(cont_dynamics)
-    , timestep_(timestep) {}
+    const shared_ptr<ODEType> &cont_dynamics, const Scalar timestep)
+    : Base(cont_dynamics), timestep_(timestep) {}
 
 template <typename Scalar>
 void IntegratorRK2Tpl<Scalar>::forward(const ConstVectorRef &x,
                                        const ConstVectorRef &u,
                                        BaseData &data) const {
   Data &d = static_cast<Data &>(data);
-  using ODEData = ContinuousDynamicsDataTpl<Scalar>;
+  using ODEData = ODEDataTpl<Scalar>;
   ODEData &cd1 = static_cast<ODEData &>(*d.continuous_data);
   ODEData &cd2 = static_cast<ODEData &>(*d.continuous_data2);
 
@@ -34,7 +33,7 @@ void IntegratorRK2Tpl<Scalar>::dForward(const ConstVectorRef &x,
                                         const ConstVectorRef &u,
                                         BaseData &data) const {
   Data &d = static_cast<Data &>(data);
-  using ODEData = ContinuousDynamicsDataTpl<Scalar>;
+  using ODEData = ODEDataTpl<Scalar>;
   ODEData &cd1 = static_cast<ODEData &>(*d.continuous_data);
   ODEData &cd2 = static_cast<ODEData &>(*d.continuous_data2);
 
@@ -63,8 +62,7 @@ void IntegratorRK2Tpl<Scalar>::dForward(const ConstVectorRef &x,
 template <typename Scalar>
 IntegratorRK2DataTpl<Scalar>::IntegratorRK2DataTpl(
     const IntegratorRK2Tpl<Scalar> *integrator)
-    : Base(integrator)
-    , x1_(integrator->space_next().neutral()) {
+    : Base(integrator), x1_(integrator->space_next().neutral()) {
   continuous_data2 =
       std::static_pointer_cast<ODEData>(integrator->ode_->createData());
 }

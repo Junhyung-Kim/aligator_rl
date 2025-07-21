@@ -1,4 +1,4 @@
-/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, 2022-2025 INRIA
+/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, INRIA
 #pragma once
 
 #include "aligator/python/fwd.hpp"
@@ -7,11 +7,9 @@
 #include "aligator/core/function-abstract.hpp"
 #include "aligator/core/unary-function.hpp"
 
-#include "aligator/modelling/dynamics/context.hpp"
-#include "aligator/modelling/dynamics/integrator-abstract.hpp"
-
 namespace aligator {
 namespace python {
+namespace internal {
 /// Wrapper for the StageFunction class and any virtual children that avoids
 /// having to redeclare Python overrides for these children.
 ///
@@ -20,31 +18,33 @@ namespace python {
 ///
 /// @tparam FunctionBase The virtual class to expose.
 template <class FunctionBase = context::StageFunction>
-struct PyStageFunction final
-    : FunctionBase,
-      PolymorphicWrapper<PyStageFunction<FunctionBase>, FunctionBase> {
+struct PyStageFunction : FunctionBase, bp::wrapper<FunctionBase> {
   using Scalar = typename FunctionBase::Scalar;
   using Data = StageFunctionDataTpl<Scalar>;
-  using FunctionBase::FunctionBase;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
 
+  // Use perfect forwarding to the FunctionBase constructors.
+  template <typename... Args>
+  PyStageFunction(Args &&...args) : FunctionBase(std::forward<Args>(args)...) {}
+
   void evaluate(const ConstVectorRef &x, const ConstVectorRef &u,
-                Data &data) const override {
-    ALIGATOR_PYTHON_OVERRIDE_PURE(void, "evaluate", x, u, boost::ref(data));
+                const ConstVectorRef &y, Data &data) const override {
+    ALIGATOR_PYTHON_OVERRIDE_PURE(void, "evaluate", x, u, y, boost::ref(data));
   }
 
   void computeJacobians(const ConstVectorRef &x, const ConstVectorRef &u,
-                        Data &data) const override {
-    ALIGATOR_PYTHON_OVERRIDE_PURE(void, "computeJacobians", x, u,
+                        const ConstVectorRef &y, Data &data) const override {
+    ALIGATOR_PYTHON_OVERRIDE_PURE(void, "computeJacobians", x, u, y,
                                   boost::ref(data));
   }
 
   void computeVectorHessianProducts(const ConstVectorRef &x,
                                     const ConstVectorRef &u,
+                                    const ConstVectorRef &y,
                                     const ConstVectorRef &lbda,
                                     Data &data) const override {
     ALIGATOR_PYTHON_OVERRIDE(void, FunctionBase, computeVectorHessianProducts,
-                             x, u, lbda, boost::ref(data));
+                             x, u, y, lbda, boost::ref(data));
   }
 
   shared_ptr<Data> createData() const override {
@@ -57,9 +57,7 @@ struct PyStageFunction final
 };
 
 template <typename UFunction = context::UnaryFunction>
-struct PyUnaryFunction final
-    : UFunction,
-      PolymorphicWrapper<PyUnaryFunction<UFunction>, UFunction> {
+struct PyUnaryFunction : UFunction, bp::wrapper<UFunction> {
   using Scalar = typename UFunction::Scalar;
   static_assert(
       std::is_base_of_v<UnaryFunctionTpl<Scalar>, UFunction>,
@@ -91,20 +89,14 @@ struct PyUnaryFunction final
                                             Data &data) const {
     UFunction::computeVectorHessianProducts(x, lbda, data);
   }
-
-  shared_ptr<Data> createData() const override {
-    ALIGATOR_PYTHON_OVERRIDE(shared_ptr<Data>, UFunction, createData, );
-  }
-
-  shared_ptr<Data> default_createData() const {
-    return UFunction::createData();
-  }
 };
+
+} // namespace internal
 
 template <typename Class>
 struct SlicingVisitor : bp::def_visitor<SlicingVisitor<Class>> {
   using Scalar = typename Class::Scalar;
-  using SliceType = FunctionSliceXprTpl<Scalar, Class>;
+  using FS = FunctionSliceXprTpl<Scalar, Class>;
 
   template <typename Iterator, typename Fn>
   static auto do_with_slice(Fn &&fun, bp::slice::range<Iterator> &range) {
@@ -115,24 +107,23 @@ struct SlicingVisitor : bp::def_visitor<SlicingVisitor<Class>> {
     fun(*range.start);
   }
 
-  static auto get_slice(xyz::polymorphic<Class> const &fn,
-                        bp::slice slice_obj) {
+  static auto get_slice(shared_ptr<Class> const &fn, bp::slice slice_obj) {
     std::vector<int> indices((unsigned)fn->nr);
     std::iota(indices.begin(), indices.end(), 0);
     auto bounds = slice_obj.get_indices(indices.cbegin(), indices.cend());
     std::vector<int> out{};
 
     do_with_slice([&](int i) { out.push_back(i); }, bounds);
-    return SliceType(fn, out);
+    return std::make_shared<FS>(fn, out);
   }
 
-  static auto get_from_index(xyz::polymorphic<Class> const &fn, const int idx) {
-    return SliceType(fn, idx);
+  static auto get_from_index(shared_ptr<Class> const &fn, const int idx) {
+    return std::make_shared<FS>(fn, idx);
   }
 
-  static auto get_from_indices(xyz::polymorphic<Class> const &fn,
+  static auto get_from_indices(shared_ptr<Class> const &fn,
                                std::vector<int> const &indices) {
-    return SliceType(fn, indices);
+    return std::make_shared<FS>(fn, indices);
   }
 
   template <typename... Args> void visit(bp::class_<Args...> &cl) const {
@@ -144,21 +135,3 @@ struct SlicingVisitor : bp::def_visitor<SlicingVisitor<Class>> {
 
 } // namespace python
 } // namespace aligator
-
-namespace boost::python::objects {
-
-template <>
-struct value_holder<aligator::python::PyStageFunction<>>
-    : aligator::python::OwningNonOwningHolder<
-          aligator::python::PyStageFunction<>> {
-  using OwningNonOwningHolder::OwningNonOwningHolder;
-};
-
-template <>
-struct value_holder<aligator::python::PyUnaryFunction<>>
-    : aligator::python::OwningNonOwningHolder<
-          aligator::python::PyUnaryFunction<>> {
-  using OwningNonOwningHolder::OwningNonOwningHolder;
-};
-
-} // namespace boost::python::objects

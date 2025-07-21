@@ -3,25 +3,34 @@
 /// @copyright Copyright (C) 2022-2024 LAAS-CNRS, INRIA
 #pragma once
 
-#include "aligator/overloads.hpp"
-#include "aligator/core/linesearch-armijo.hpp"
-#include "aligator/core/linesearch-nonmonotone.hpp"
+#include "aligator/core/linesearch.hpp"
 #include "aligator/core/filter.hpp"
 #include "aligator/core/callback-base.hpp"
 #include "aligator/core/enums.hpp"
+#include "aligator/threads.hpp"
 #include "aligator/utils/logger.hpp"
-#include "aligator/gar/riccati-base.hpp"
 
 #include "workspace.hpp"
 #include "results.hpp"
+#include "merit-function.hpp"
 
-#include <boost/unordered_map.hpp>
-#include <variant>
+#include <proxsuite-nlp/bcl-params.hpp>
+
+#include <unordered_map>
 
 namespace aligator {
 namespace gar {
 template <typename Scalar> class RiccatiSolverBase;
 } // namespace gar
+
+/// TODO: NEW G.A.R. BACKEND CAN'T HANDLE DIFFERENT WEIGHTS, PLS FIX
+template <typename Scalar> struct DefaultScaling {
+  void operator()(ConstraintProximalScalerTpl<Scalar> &scaler) {
+    for (std::size_t j = 0; j < scaler.size(); j++)
+      scaler.setWeight(scale, j);
+  }
+  static constexpr Scalar scale = 10.;
+};
 
 enum class LQSolverChoice { SERIAL, PARALLEL, STAGEDENSE };
 
@@ -35,6 +44,8 @@ enum class LQSolverChoice { SERIAL, PARALLEL, STAGEDENSE };
 /// implementation.
 template <typename _Scalar> struct SolverProxDDPTpl {
 public:
+  // typedefs
+
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Problem = TrajOptProblemTpl<Scalar>;
@@ -44,97 +55,28 @@ public:
   using DynamicsData = DynamicsDataTpl<Scalar>;
   using CostData = CostDataAbstractTpl<Scalar>;
   using StageModel = StageModelTpl<Scalar>;
+  using ConstraintType = StageConstraintTpl<Scalar>;
   using StageData = StageDataTpl<Scalar>;
   using CallbackPtr = shared_ptr<CallbackBaseTpl<Scalar>>;
-  using CallbackMap = boost::unordered_map<std::string, CallbackPtr>;
+  using CallbackMap = std::unordered_map<std::string, CallbackPtr>;
   using ConstraintStack = ConstraintStackTpl<Scalar>;
-  using CstrSet = ConstraintSetTpl<Scalar>;
+  using CstrSet = ConstraintSetBase<Scalar>;
   using TrajOptData = TrajOptDataTpl<Scalar>;
   using LinesearchOptions = typename Linesearch<Scalar>::Options;
-
-  struct LinesearchVariant {
-    using fun_t = std::function<Scalar(Scalar)>;
-    using variant_t = std::variant<std::monostate, ArmijoLinesearch<Scalar>,
-                                   NonmonotoneLinesearch<Scalar>>;
-
-    Scalar run(const fun_t &fun, const Scalar phi0, const Scalar dphi0,
-               Scalar &alpha_try) {
-      return std::visit(
-          overloads{[](std::monostate &) {
-                      return std::numeric_limits<Scalar>::quiet_NaN();
-                    },
-                    [&](auto &&method) {
-                      return method.run(fun, phi0, dphi0, alpha_try);
-                    }},
-          impl_);
-    }
-
-    void reset() {
-      std::visit(overloads{[](std::monostate &) {},
-                           [&](auto &&method) { method.reset(); }},
-                 impl_);
-    }
-
-    Scalar isValid() const { return impl_.index() > 0ul; }
-
-    operator const variant_t &() const { return impl_; }
-
-  private:
-    explicit LinesearchVariant() {}
-    void init(StepAcceptanceStrategy strat, const LinesearchOptions &options) {
-      switch (strat) {
-      case StepAcceptanceStrategy::LINESEARCH_ARMIJO:
-        impl_ = ArmijoLinesearch<Scalar>(options);
-        break;
-      case StepAcceptanceStrategy::LINESEARCH_NONMONOTONE:
-        impl_ = NonmonotoneLinesearch<Scalar>(options);
-        break;
-      default:
-        ALIGATOR_WARNING("LinesearchVariant::",
-                         "provided StepAcceptanceStrategy is invalid.");
-        break;
-      }
-    }
-    friend SolverProxDDPTpl;
-    variant_t impl_;
-  };
-
-  struct AlmParams {
-    /// Log-factor \f$\alpha_\eta\f$ for primal tolerance (failure)
-    Scalar prim_alpha = 0.1;
-    /// Log-factor \f$\beta_\eta\f$ for primal tolerance (success)
-    Scalar prim_beta = 0.9;
-    /// Log-factor \f$\alpha_\eta\f$ for dual tolerance (failure)
-    Scalar dual_alpha = 1.;
-    /// Log-factor \f$\beta_\eta\f$ for dual tolerance (success)
-    Scalar dual_beta = 1.;
-    /// Scale factor for the dual proximal penalty.
-    Scalar mu_update_factor = 0.01;
-    /// Constraints AL scaling
-    Scalar dyn_al_scale = 1e-3;
-    /// Lower bound on AL parameter
-    Scalar mu_lower_bound = 1e-8; //< Minimum possible penalty parameter.
-  };
+  using CstrProximalScaler = ConstraintProximalScalerTpl<Scalar>;
+  using LinesearchType = proxsuite::nlp::ArmijoLinesearch<Scalar>;
+  using LQProblem = gar::LQRProblemTpl<Scalar>;
+  using Filter = FilterTpl<Scalar>;
 
   /// Subproblem tolerance
   Scalar inner_tol_;
-  /// Desired primal feasibility (for each outer loop)
+  /// Desired primal feasibility
   Scalar prim_tol_;
-  /// Solver tolerance \f$\epsilon > 0\f$. When sync_dual_tol is false, this
-  /// will be the desired primal feasibility, where the dual feasibility
-  /// tolerance is controlled by SolverProxDDPTpl::target_tol_dual.
+  /// Solver tolerance \f$\epsilon > 0\f$.
   Scalar target_tol_ = 1e-6;
 
-private:
-  /// Solver desired dual feasibility (by default, same as
-  /// SolverProxDDPTpl::target_tol_)
-  Scalar target_dual_tol_;
-  /// When this is true, dual tolerance will be set to
-  /// SolverProxDDPTpl::target_tol_ when SolverProxDDPTpl::run() is called.
-  bool sync_dual_tol;
-
-public:
   Scalar mu_init = 0.01; //< Initial AL parameter
+  Scalar rho_init = 0.;
 
   //// Inertia-correcting heuristic
 
@@ -159,10 +101,13 @@ public:
   VerboseLevel verbose_;
   /// Choice of linear solver
   LQSolverChoice linear_solver_choice = LQSolverChoice::SERIAL;
+  bool lq_print_detailed = false;
   /// Type of Hessian approximation. Default is Gauss-Newton.
   HessianApprox hess_approx_ = HessianApprox::GAUSS_NEWTON;
-  /// Linesearch options.
+  /// Linesearch options, as in proxsuite-nlp.
   LinesearchOptions ls_params;
+  /// Type of linesearch strategy. Default is Armijo.
+  LinesearchStrategy ls_strat = LinesearchStrategy::ARMIJO;
   /// Type of Lagrange multiplier update.
   MultiplierUpdateMode multiplier_update_mode = MultiplierUpdateMode::NEWTON;
   /// Linesearch mode.
@@ -172,64 +117,71 @@ public:
   /// Type of rollout for the forward pass.
   RolloutType rollout_type_ = RolloutType::NONLINEAR;
   /// Parameters for the BCL outer loop of the augmented Lagrangian algorithm.
-  AlmParams bcl_params;
+  BCLParamsTpl<Scalar> bcl_params;
   /// Step acceptance mode.
-  StepAcceptanceStrategy sa_strategy_;
+  StepAcceptanceStrategy sa_strategy = StepAcceptanceStrategy::LINESEARCH;
 
   /// Force the initial state @f$ x_0 @f$ to be fixed to the problem initial
   /// condition.
   bool force_initial_condition_ = true;
 
-  std::size_t max_refinement_steps_ =
+  std::size_t maxRefinementSteps_ =
       0; //< Max number of KKT system refinement iters
-  Scalar refinement_threshold_ = 1e-13; //< Target tol. for the KKT system.
-  std::size_t max_iters;                //< Max number of Newton iterations.
-  std::size_t max_al_iters = 100;       //< Maximum number of ALM iterations.
-  uint rollout_max_iters;               //< Nonlinear rollout options
+  Scalar refinementThreshold_ = 1e-13; //< Target tol. for the KKT system.
+  std::size_t max_iters;               //< Max number of Newton iterations.
+  std::size_t max_al_iters = 100;      //< Maximum number of ALM iterations.
+  Scalar mu_lower_bound = 1e-8;        //< Minimum possible penalty parameter.
+  uint rollout_max_iters;              //< Nonlinear rollout options
 
+  /// Callbacks
+  CallbackMap callbacks_;
   Workspace workspace_;
   Results results_;
   /// LQR subproblem solver
-  std::unique_ptr<gar::RiccatiSolverBase<Scalar>> linearSolver_;
-  FilterTpl<Scalar> filter_;
-  /// Linesearch function
-  LinesearchVariant linesearch_;
+  unique_ptr<gar::RiccatiSolverBase<Scalar>> linearSolver_;
+  Filter filter_;
 
 private:
-  /// Callbacks
-  CallbackMap callbacks_;
   /// Number of threads
   std::size_t num_threads_ = 1;
   /// Dual proximal/ALM penalty parameter \f$\mu\f$
   /// This is the global parameter: scales may be applied for stagewise
   /// constraints, dynamicals...
   Scalar mu_penal_ = mu_init;
-  Scalar mu_penal_inv_ = 1. / mu_penal_;
+  /// Primal proximal parameter \f$\rho > 0\f$
+  Scalar rho_penal_ = rho_init;
+  /// Linesearch function
+  LinesearchType linesearch_;
 
 public:
   SolverProxDDPTpl(const Scalar tol = 1e-6, const Scalar mu_init = 0.01,
+                   const Scalar rho_init = 0.,
                    const std::size_t max_iters = 1000,
                    VerboseLevel verbose = VerboseLevel::QUIET,
-                   StepAcceptanceStrategy sa_strategy =
-                       StepAcceptanceStrategy::LINESEARCH_NONMONOTONE,
                    HessianApprox hess_approx = HessianApprox::GAUSS_NEWTON);
 
-  inline std::size_t getNumThreads() const { return num_threads_; }
-  void setNumThreads(const std::size_t num_threads);
-
-  Scalar getDualTolerance() const { return target_dual_tol_; }
-  /// Manually set desired dual feasibility tolerance.
-  void setDualTolerance(const Scalar tol) {
-    target_dual_tol_ = tol;
-    sync_dual_tol = false;
+  void setNumThreads(const std::size_t num_threads) {
+    if (linearSolver_) {
+      ALIGATOR_WARNING(
+          "SolverProxDDP",
+          "Linear solver already set: setNumThreads() should be called before "
+          "you call setup() if you want to use the parallel linear solver.\n");
+    }
+    num_threads_ = num_threads;
+    omp::set_default_options(num_threads);
   }
+  std::size_t getNumThreads() const { return num_threads_; }
+
+  ALIGATOR_DEPRECATED const Results &getResults() { return results_; }
+  ALIGATOR_DEPRECATED const Workspace &getWorkspace() { return workspace_; }
 
   /// @brief    Try a step of size \f$\alpha\f$.
   /// @returns  A primal-dual trial point
   ///           \f$(\bfx \oplus\alpha\delta\bfx, \bfu+\alpha\delta\bfu,
   ///           \bmlam+\alpha\delta\bmlam)\f$
   /// @returns  The trajectory cost.
-  Scalar tryLinearStep(const Problem &problem, const Scalar alpha);
+  static Scalar tryLinearStep(const Problem &problem, Workspace &workspace,
+                              const Results &results, const Scalar alpha);
 
   /// @brief    Policy rollout using the full nonlinear dynamics. The feedback
   /// gains need to be computed first. This will evaluate all the terms in the
@@ -246,20 +198,16 @@ public:
   /// @param problem  The problem instance with respect to which memory will be
   /// allocated.
   void setup(const Problem &problem);
-  void cycleProblem(const Problem &problem,
-                    shared_ptr<StageDataTpl<Scalar>> data);
 
   /// @brief Run the numerical solver.
   /// @param problem  The trajectory optimization problem to solve.
   /// @param xs_init  Initial trajectory guess.
   /// @param us_init  Initial control sequence guess.
-  /// @param vs_init  Initial path multiplier guess.
-  /// @param lams_init  Initial co-state guess.
+  /// @param lams_init  Initial multiplier guess.
   /// @pre  You must call SolverProxDDP::setup beforehand to allocate a
   /// workspace and results.
   bool run(const Problem &problem, const std::vector<VectorXs> &xs_init = {},
            const std::vector<VectorXs> &us_init = {},
-           const std::vector<VectorXs> &vs_init = {},
            const std::vector<VectorXs> &lams_init = {});
 
   /// @brief    Perform the inner loop of the algorithm (augmented Lagrangian
@@ -278,22 +226,16 @@ public:
   /// \{
 
   /// @brief    Add a callback to the solver instance.
-  void registerCallback(const std::string &name, CallbackPtr cb);
+  void registerCallback(const std::string &name, CallbackPtr cb) {
+    callbacks_[name] = cb;
+  }
 
   /// @brief    Remove all callbacks from the instance.
   void clearCallbacks() noexcept { callbacks_.clear(); }
 
   const CallbackMap &getCallbacks() const { return callbacks_; }
   void removeCallback(const std::string &name) { callbacks_.erase(name); }
-  auto getCallbackNames() const {
-    std::vector<std::string> keys;
-    for (const auto &item : callbacks_) {
-      keys.push_back(item.first);
-    }
-    return keys;
-  }
-
-  CallbackPtr getCallback(const std::string &name) const {
+  auto getCallback(const std::string &name) -> CallbackPtr {
     auto cb = callbacks_.find(name);
     if (cb != end(callbacks_)) {
       return cb->second;
@@ -312,16 +254,18 @@ public:
   /// Compute the merit function and stopping criterion dual terms:
   /// first-order Lagrange multiplier estimates, shifted and
   /// projected constraints.
-  /// @return bool: whether the op succeeded.
-  bool computeMultipliers(const Problem &problem,
+  void computeMultipliers(const Problem &problem,
                           const std::vector<VectorXs> &lams,
                           const std::vector<VectorXs> &vs);
 
-  ALIGATOR_INLINE Scalar mudyn() const {
-    return bcl_params.dyn_al_scale * mu_penal_;
-  }
+  /// @copydoc mu_penal_
   ALIGATOR_INLINE Scalar mu() const { return mu_penal_; }
-  ALIGATOR_INLINE Scalar mu_inv() const { return mu_penal_inv_; }
+
+  /// @copydoc mu_inverse_
+  ALIGATOR_INLINE Scalar mu_inv() const { return 1. / mu_penal_; }
+
+  /// @copydoc rho_penal_
+  ALIGATOR_INLINE Scalar rho() const { return rho_penal_; }
 
   /// @brief Update primal-dual feedback gains (control, costate, path
   /// multiplier)
@@ -329,29 +273,28 @@ public:
 
 protected:
   void updateTolsOnFailure() noexcept {
-    const Scalar arg = std::min(mu_penal_, 0.99);
-    prim_tol_ = prim_tol0 * std::pow(arg, bcl_params.prim_alpha);
-    inner_tol_ = inner_tol0 * std::pow(arg, bcl_params.dual_alpha);
+    prim_tol_ = prim_tol0 * std::pow(mu_penal_, bcl_params.prim_alpha);
+    inner_tol_ = inner_tol0 * std::pow(mu_penal_, bcl_params.dual_alpha);
   }
 
   void updateTolsOnSuccess() noexcept {
-    const Scalar arg = std::min(mu_penal_, 0.99);
-    prim_tol_ = prim_tol_ * std::pow(arg, bcl_params.prim_beta);
-    inner_tol_ = inner_tol_ * std::pow(arg, bcl_params.dual_beta);
+    prim_tol_ = prim_tol_ * std::pow(mu_penal_, bcl_params.prim_beta);
+    inner_tol_ = inner_tol_ * std::pow(mu_penal_, bcl_params.dual_beta);
   }
 
   /// Set dual proximal/ALM penalty parameter.
   ALIGATOR_INLINE void setAlmPenalty(Scalar new_mu) noexcept {
-    mu_penal_ = std::max(new_mu, bcl_params.mu_lower_bound);
-    mu_penal_inv_ = 1. / mu_penal_;
+    mu_penal_ = std::max(new_mu, mu_lower_bound);
   }
+
+  ALIGATOR_INLINE void setRho(Scalar new_rho) noexcept { rho_penal_ = new_rho; }
 
   // See sec. 3.1 of the IPOPT paper [Wächter, Biegler 2006]
   // called before first bwd pass attempt
   inline void initializeRegularization() noexcept {
     if (preg_last_ == 0.) {
       // this is the 1st iteration
-      preg_ = std::max(reg_init, reg_min);
+      preg_ = reg_init;
     } else {
       // attempt decrease from last "good" value
       preg_ = std::max(reg_min, preg_last_ * reg_dec_k_);
@@ -367,6 +310,8 @@ protected:
 };
 
 } // namespace aligator
+
+#include "solver-proxddp.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "solver-proxddp.txx"

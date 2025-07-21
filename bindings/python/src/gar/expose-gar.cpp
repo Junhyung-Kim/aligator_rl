@@ -3,6 +3,7 @@
 #include "aligator/python/blk-matrix.hpp"
 #include "aligator/gar/lqr-problem.hpp"
 #include "aligator/gar/riccati-base.hpp"
+#include "aligator/gar/utils.hpp"
 
 #include "aligator/python/utils.hpp"
 #include "aligator/python/visitors.hpp"
@@ -14,14 +15,25 @@ using namespace gar;
 
 using context::Scalar;
 using riccati_base_t = RiccatiSolverBase<Scalar>;
-using knot_t = LqrKnotTpl<context::Scalar>;
-using lqr_t = LqrProblemTpl<context::Scalar>;
+using knot_t = LQRKnotTpl<context::Scalar>;
+using lqr_t = LQRProblemTpl<context::Scalar>;
 
 using context::MatrixXs;
 using RowMatrixXs = Eigen::Transpose<MatrixXs>::PlainMatrix;
 using context::VectorXs;
 
 using knot_vec_t = lqr_t::KnotVector;
+
+bp::dict lqr_sol_initialize_wrap(const lqr_t &problem) {
+  bp::dict out;
+  auto ss = lqrInitializeSolution(problem);
+  auto &[xs, us, vs, lbdas] = ss;
+  out["xs"] = xs;
+  out["us"] = us;
+  out["vs"] = vs;
+  out["lbdas"] = lbdas;
+  return out;
+}
 
 static void exposeBlockMatrices() {
   BlkMatrixPythonVisitor<BlkMatrix<MatrixXs, 2, 2>>::expose("BlockMatrix22");
@@ -49,8 +61,6 @@ void exposeParallelSolver();
 void exposeDenseSolver();
 // fwd-declare exposeProxRiccati()
 void exposeProxRiccati();
-// fwd-declare exposeGarUtils()
-void exposeGarUtils();
 
 void exposeGAR() {
 
@@ -58,10 +68,9 @@ void exposeGAR() {
 
   exposeBlockMatrices();
 
-  bp::class_<knot_t>("LqrKnot", bp::no_init)
-      .def(bp::init<uint, uint, uint>(("self"_a, "nx", "nu", "nc")))
-      .def(bp::init<uint, uint, uint, uint, uint>(
-          ("self"_a, "nx"_a, "nu", "nc", "nx2", "nth"_a = 0)))
+  bp::class_<knot_t>("LQRKnot", bp::no_init)
+      .def(bp::init<uint, uint, uint>(("nx"_a, "nu", "nc")))
+      .def(bp::init<uint, uint, uint, uint>(("nx"_a, "nu", "nc", "nx2")))
       .def_readonly("nx", &knot_t::nx)
       .def_readonly("nu", &knot_t::nu)
       .def_readonly("nc", &knot_t::nc)
@@ -88,15 +97,12 @@ void exposeGAR() {
       .def_readwrite("Gu", &knot_t::Gu)
       .def_readwrite("gamma", &knot_t::gamma)
       //
-      .def("isApprox", &knot_t::isApprox,
-           ("self"_a, "prec"_a = std::numeric_limits<Scalar>::epsilon()))
-      //
       .def(CopyableVisitor<knot_t>())
       .def(PrintableVisitor<knot_t>());
 
-  StdVectorPythonVisitor<knot_vec_t, false>::expose("StdVec_LqrKnot");
+  StdVectorPythonVisitor<knot_vec_t, false>::expose("StdVec_LQRKnot");
 
-  bp::class_<lqr_t, boost::noncopyable>("LqrProblem", bp::no_init)
+  bp::class_<lqr_t>("LQRProblem", bp::no_init)
       .def(bp::init<const knot_vec_t &, long>(("self"_a, "stages", "nc0")))
       .def_readwrite("stages", &lqr_t::stages)
       .add_property("horizon", &lqr_t::horizon)
@@ -111,7 +117,8 @@ void exposeGAR() {
       .add_property("ntheta", &lqr_t::ntheta)
       .def("evaluate", &lqr_t::evaluate,
            ("self"_a, "xs", "us", "theta"_a = std::nullopt),
-           "Evaluate the problem objective.");
+           "Evaluate the problem objective.")
+      .def(CopyableVisitor<lqr_t>());
 
   bp::class_<riccati_base_t, boost::noncopyable>("RiccatiSolverBase",
                                                  bp::no_init)
@@ -119,7 +126,15 @@ void exposeGAR() {
       .def("forward", &riccati_base_t::forward,
            ("self"_a, "xs", "us", "vs", "lbdas", "theta"_a = std::nullopt));
 
-  exposeGarUtils();
+  bp::def(
+      "lqrDenseMatrix",
+      +[](const lqr_t &problem, Scalar mudyn, Scalar mueq) {
+        auto mat_rhs = lqrDenseMatrix(problem, mudyn, mueq);
+        return bp::make_tuple(std::get<0>(mat_rhs), std::get<1>(mat_rhs));
+      },
+      ("problem"_a, "mudyn", "mueq"));
+
+  bp::def("lqrInitializeSolution", lqr_sol_initialize_wrap, ("problem"_a));
 
 #ifdef ALIGATOR_WITH_CHOLMOD
   exposeCholmodSolver();

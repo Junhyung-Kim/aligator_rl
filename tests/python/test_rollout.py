@@ -1,6 +1,6 @@
 import aligator
 
-from aligator.manifolds import MultibodyPhaseSpace
+from proxsuite_nlp.manifolds import MultibodyPhaseSpace
 from aligator.dynamics import (
     MultibodyFreeFwdDynamics,
     IntegratorEuler,

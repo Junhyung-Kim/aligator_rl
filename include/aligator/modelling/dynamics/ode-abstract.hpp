@@ -17,7 +17,7 @@ struct ODEAbstractTpl : ContinuousDynamicsAbstractTpl<_Scalar> {
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
 
   using Base = ContinuousDynamicsAbstractTpl<Scalar>;
-  using Data = ContinuousDynamicsDataTpl<Scalar>;
+  using Data = ODEDataTpl<Scalar>;
   using Base::Base;
   using Base::nu_;
   using Base::space_;
@@ -43,6 +43,8 @@ struct ODEAbstractTpl : ContinuousDynamicsAbstractTpl<_Scalar> {
 
 } // namespace dynamics
 } // namespace aligator
+
+#include "aligator/modelling/dynamics/ode-abstract.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "aligator/modelling/dynamics/ode-abstract.txx"

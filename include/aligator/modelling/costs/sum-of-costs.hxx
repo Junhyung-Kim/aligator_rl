@@ -4,11 +4,10 @@
 
 namespace aligator {
 template <typename Scalar>
-CostStackTpl<Scalar>::CostStackTpl(xyz::polymorphic<Manifold> space,
-                                   const int nu,
-                                   const std::vector<PolyCost> &comps,
+CostStackTpl<Scalar>::CostStackTpl(shared_ptr<Manifold> space, const int nu,
+                                   const std::vector<CostPtr> &comps,
                                    const std::vector<Scalar> &weights)
-    : CostBase(space, nu) {
+    : CostBase(space, nu), components_(comps), weights_(weights) {
   if (comps.size() != weights.size()) {
     auto msg = fmt::format(
         "Inconsistent number of components ({:d}) and weights ({:d}).",
@@ -16,7 +15,7 @@ CostStackTpl<Scalar>::CostStackTpl(xyz::polymorphic<Manifold> space,
     ALIGATOR_RUNTIME_ERROR(msg);
   } else {
     for (std::size_t i = 0; i < comps.size(); i++) {
-      if (!this->checkDimension(*comps[i])) {
+      if (!this->checkDimension(comps[i].get())) {
         auto msg = fmt::format("Component #{:d} has wrong input dimensions "
                                "({:d}, {:d}) (expected "
                                "({:d}, {:d}))",
@@ -25,36 +24,33 @@ CostStackTpl<Scalar>::CostStackTpl(xyz::polymorphic<Manifold> space,
         ALIGATOR_RUNTIME_ERROR(msg);
       }
     }
-
-    for (std::size_t i = 0; i < comps.size(); i++) {
-      components_.emplace(i, std::make_pair(comps[i], weights[i]));
-    }
   }
 }
 
 template <typename Scalar>
-CostStackTpl<Scalar>::CostStackTpl(const PolyCost &cost)
-    : CostBase(cost->space, cost->nu) {
-  components_.emplace(0UL, std::make_pair(cost, 1.0));
+CostStackTpl<Scalar>::CostStackTpl(const CostPtr &cost)
+    : CostStackTpl(cost->space, cost->nu, {cost}, {1.}) {}
+
+template <typename Scalar>
+bool CostStackTpl<Scalar>::checkDimension(const CostBase *comp) const {
+  return (comp->nx() == this->nx()) && (comp->ndx() == this->ndx()) &&
+         (comp->nu == this->nu);
+}
+
+template <typename Scalar> std::size_t CostStackTpl<Scalar>::size() const {
+  return components_.size();
 }
 
 template <typename Scalar>
-bool CostStackTpl<Scalar>::checkDimension(const CostBase &comp) const {
-  return (comp.nx() == this->nx()) && (comp.ndx() == this->ndx()) &&
-         (comp.nu == this->nu);
-}
-
-template <typename Scalar>
-auto CostStackTpl<Scalar>::addCost(const CostKey &key, const PolyCost &cost,
-                                   const Scalar weight) -> CostItem & {
-  if (!this->checkDimension(*cost)) {
-    ALIGATOR_DOMAIN_ERROR(
+void CostStackTpl<Scalar>::addCost(const CostPtr &cost, const Scalar weight) {
+  if (!this->checkDimension(cost.get())) {
+    ALIGATOR_DOMAIN_ERROR(fmt::format(
         "Cannot add new component due to inconsistent input dimensions "
         "(got ({:d}, {:d}), expected ({:d}, {:d}))",
-        cost->ndx(), cost->nu, this->ndx(), this->nu);
+        cost->ndx(), cost->nu, this->ndx(), this->nu));
   }
-  components_.emplace(key, std::make_pair(cost, weight));
-  return components_.at(key);
+  components_.push_back(cost);
+  weights_.push_back(weight);
 }
 
 template <typename Scalar>
@@ -63,9 +59,9 @@ void CostStackTpl<Scalar>::evaluate(const ConstVectorRef &x,
                                     CostData &data) const {
   SumCostData &d = static_cast<SumCostData &>(data);
   d.value_ = 0.;
-  for (const auto &[key, item] : components_) {
-    item.first->evaluate(x, u, *d.sub_cost_data[key]);
-    d.value_ += item.second * d.sub_cost_data[key]->value_;
+  for (std::size_t i = 0; i < components_.size(); i++) {
+    components_[i]->evaluate(x, u, *d.sub_cost_data[i]);
+    d.value_ += this->weights_[i] * d.sub_cost_data[i]->value_;
   }
 }
 
@@ -75,9 +71,9 @@ void CostStackTpl<Scalar>::computeGradients(const ConstVectorRef &x,
                                             CostData &data) const {
   SumCostData &d = static_cast<SumCostData &>(data);
   d.grad_.setZero();
-  for (const auto &[key, item] : components_) {
-    item.first->computeGradients(x, u, *d.sub_cost_data[key]);
-    d.grad_.noalias() += item.second * d.sub_cost_data[key]->grad_;
+  for (std::size_t i = 0; i < components_.size(); i++) {
+    components_[i]->computeGradients(x, u, *d.sub_cost_data[i]);
+    d.grad_.noalias() += this->weights_[i] * d.sub_cost_data[i]->grad_;
   }
 }
 
@@ -87,9 +83,9 @@ void CostStackTpl<Scalar>::computeHessians(const ConstVectorRef &x,
                                            CostData &data) const {
   SumCostData &d = static_cast<SumCostData &>(data);
   d.hess_.setZero();
-  for (const auto &[key, item] : components_) {
-    item.first->computeHessians(x, u, *d.sub_cost_data[key]);
-    d.hess_.noalias() += item.second * d.sub_cost_data[key]->hess_;
+  for (std::size_t i = 0; i < components_.size(); i++) {
+    components_[i]->computeHessians(x, u, *d.sub_cost_data[i]);
+    d.hess_.noalias() += this->weights_[i] * d.sub_cost_data[i]->hess_;
   }
 }
 
@@ -104,8 +100,8 @@ CostStackTpl<Scalar>::createData() const {
 template <typename Scalar>
 CostStackDataTpl<Scalar>::CostStackDataTpl(const CostStackTpl<Scalar> &obj)
     : CostData(obj.ndx(), obj.nu) {
-  for (const auto &[key, item] : obj.components_) {
-    sub_cost_data[key] = item.first->createData();
+  for (std::size_t i = 0; i < obj.size(); i++) {
+    sub_cost_data.push_back(obj.components_[i]->createData());
   }
 }
 

@@ -1,15 +1,18 @@
 /// @file
 /// @brief Benchmark aligator::SolverFDDP against SolverProxDDP on a simple
 /// example
-/// @copyright Copyright (C) 2024 LAAS-CNRS, 2024-2025 INRIA
+/// @copyright Copyright (C) 2024 LAAS-CNRS, INRIA
 
 #include <benchmark/benchmark.h>
+
+#include <proxsuite-nlp/fwd.hpp>
 
 #include "talos-walk-utils.hpp"
 
 #include "aligator/core/traj-opt-problem.hpp"
 #include "aligator/solvers/fddp/solver-fddp.hpp"
 #include "aligator/solvers/proxddp/solver-proxddp.hpp"
+#include <proxsuite-nlp/ldlt-allocator.hpp>
 
 using aligator::SolverFDDPTpl;
 using aligator::SolverProxDDPTpl;
@@ -28,7 +31,7 @@ static void BM_aligator(benchmark::State &state) {
   const std::size_t nsteps = T_ss * 2 + T_ds * 3;
   const auto num_threads = static_cast<std::size_t>(state.range(1));
 
-  TrajOptProblem problem = defineLocomotionProblem(T_ss, T_ds);
+  auto problem = defineLocomotionProblem(T_ss, T_ds);
 
   std::vector<VectorXd> xs_i;
   std::vector<VectorXd> us_i;
@@ -38,7 +41,7 @@ static void BM_aligator(benchmark::State &state) {
   xs_i.assign(nsteps + 1, problem.getInitState());
   us_i.assign(nsteps, u0);
 
-  SolverProxDDPTpl<double> solver(TOL, mu_init, maxiters, aligator::QUIET);
+  SolverProxDDPTpl<double> solver(TOL, mu_init, 0., maxiters, aligator::QUIET);
 
   solver.rollout_type_ = aligator::RolloutType::LINEAR;
   solver.linear_solver_choice = lqsc;

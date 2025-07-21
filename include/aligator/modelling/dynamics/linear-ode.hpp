@@ -2,7 +2,7 @@
 #pragma once
 
 #include "aligator/modelling/dynamics/ode-abstract.hpp"
-#include "aligator/core/vector-space.hpp"
+#include <proxsuite-nlp/modelling/spaces/vector-space.hpp>
 
 namespace aligator {
 namespace dynamics {
@@ -15,9 +15,9 @@ template <typename _Scalar> struct LinearODETpl : ODEAbstractTpl<_Scalar> {
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = ODEAbstractTpl<Scalar>;
-  using ODEData = ContinuousDynamicsDataTpl<Scalar>;
+  using ODEData = ODEDataTpl<Scalar>;
   using Manifold = ManifoldAbstractTpl<Scalar>;
-  using ManifoldPtr = xyz::polymorphic<Manifold>;
+  using ManifoldPtr = shared_ptr<Manifold>;
 
   MatrixXs A_, B_;
   VectorXs c_;
@@ -26,14 +26,11 @@ template <typename _Scalar> struct LinearODETpl : ODEAbstractTpl<_Scalar> {
   /// constant term \f$c\f$.
   LinearODETpl(const ManifoldPtr &space, const MatrixXs &A, const MatrixXs &B,
                const VectorXs &c)
-      : Base(space, (int)B.cols())
-      , A_(A)
-      , B_(B)
-      , c_(c) {
+      : Base(space, (int)B.cols()), A_(A), B_(B), c_(c) {
     if (A.cols() != space->ndx()) {
-      ALIGATOR_DOMAIN_ERROR(
+      ALIGATOR_DOMAIN_ERROR(fmt::format(
           "A.cols() should be equal to space.ndx()! (got {:d} and {:d})",
-          A.cols(), space->ndx());
+          A.cols(), space->ndx()));
     }
     bool rows_ok = (A.rows() == space->ndx()) && (B.rows() == space->ndx()) &&
                    (c.rows() == space->ndx());
@@ -47,8 +44,8 @@ template <typename _Scalar> struct LinearODETpl : ODEAbstractTpl<_Scalar> {
    * The state space is inferred to be a vector space.
    */
   LinearODETpl(const MatrixXs &A, const MatrixXs &B, const VectorXs &c)
-      : LinearODETpl(xyz::polymorphic<Manifold>(
-                         ::aligator::VectorSpaceTpl<Scalar>((int)A.rows())),
+      : LinearODETpl(std::make_shared<proxsuite::nlp::VectorSpaceTpl<Scalar>>(
+                         (int)A.rows()),
                      A, B, c) {}
 
   void forward(const ConstVectorRef &x, const ConstVectorRef &u,

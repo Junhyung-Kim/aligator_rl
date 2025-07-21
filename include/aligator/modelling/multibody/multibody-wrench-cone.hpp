@@ -4,7 +4,10 @@
 #include "aligator/core/function-abstract.hpp"
 
 #include <pinocchio/multibody/model.hpp>
+#include <proxsuite-nlp/modelling/spaces/multibody.hpp>
+#include <pinocchio/multibody/data.hpp>
 
+#ifdef ALIGATOR_PINOCCHIO_V3
 #include <pinocchio/algorithm/proximal.hpp>
 
 namespace aligator {
@@ -17,7 +20,7 @@ template <typename Scalar> struct MultibodyWrenchConeDataTpl;
  */
 
 template <typename _Scalar>
-struct MultibodyWrenchConeResidualTpl : StageFunctionTpl<_Scalar> {
+struct MultibodyWrenchConeResidualTpl : StageFunctionTpl<_Scalar>, frame_api {
 public:
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
@@ -40,37 +43,22 @@ public:
   double hL_;
   double hW_;
   int contact_id_;
-
   Eigen::Matrix<Scalar, 17, 6> Acone_;
 
   MultibodyWrenchConeResidualTpl(
       const int ndx, const Model &model, const MatrixXs &actuation,
       const RigidConstraintModelVector &constraint_models,
-      const ProxSettings &prox_settings, const std::string &contact_name,
-      const double mu, const double half_length, const double half_width)
-      : Base(ndx, (int)actuation.cols(), 17)
-      , pin_model_(model)
-      , actuation_matrix_(actuation)
-      , constraint_models_(constraint_models)
-      , prox_settings_(prox_settings)
-      , mu_(mu)
-      , hL_(half_length)
-      , hW_(half_width) {
+      const ProxSettings &prox_settings, const int contact_id, const double mu,
+      const double half_length, const double half_width)
+      : Base(ndx, (int)actuation.cols(), 17), pin_model_(model),
+        actuation_matrix_(actuation), constraint_models_(constraint_models),
+        prox_settings_(prox_settings), mu_(mu), hL_(half_length),
+        hW_(half_width), contact_id_(contact_id) {
     if (model.nv != actuation.rows()) {
       ALIGATOR_DOMAIN_ERROR(
           fmt::format("actuation matrix should have number of rows = pinocchio "
                       "model nv ({} and {}).",
                       actuation.rows(), model.nv));
-    }
-    contact_id_ = -1;
-    for (std::size_t i = 0; i < constraint_models.size(); i++) {
-      if (constraint_models[i].name == contact_name) {
-        contact_id_ = (int)i;
-      }
-    }
-    if (contact_id_ == -1) {
-      ALIGATOR_RUNTIME_ERROR(
-          "Contact name is not included in constraint models");
     }
     Acone_ << 0, 0, -1, 0, 0, 0, -1, 0, -mu_, 0, 0, 0, 1, 0, -mu_, 0, 0, 0, 0,
         -1, -mu_, 0, 0, 0, 0, 1, -mu_, 0, 0, 0, 0, 0, -hW_, -1, 0, 0, 0, 0,
@@ -84,10 +72,10 @@ public:
   }
 
   void evaluate(const ConstVectorRef &x, const ConstVectorRef &u,
-                BaseData &data) const;
+                const ConstVectorRef &, BaseData &data) const;
 
   void computeJacobians(const ConstVectorRef &, const ConstVectorRef &,
-                        BaseData &data) const;
+                        const ConstVectorRef &, BaseData &data) const;
 
   shared_ptr<BaseData> createData() const {
     return std::make_shared<Data>(this);
@@ -119,6 +107,10 @@ struct MultibodyWrenchConeDataTpl : StageFunctionDataTpl<Scalar> {
 
 } // namespace aligator
 
+#include "aligator/modelling/multibody/multibody-wrench-cone.hxx"
+
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-#include "aligator/modelling/multibody/multibody-wrench-cone.txx"
+#include "./multibody-wrench-cone.txx"
 #endif
+
+#endif // ALIGATOR_PINOCCHIO_V3

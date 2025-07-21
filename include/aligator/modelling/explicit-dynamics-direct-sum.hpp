@@ -1,9 +1,9 @@
 /// @file
-/// @copyright Copyright (C) 2023 LAAS-CNRS, 2022-2025 INRIA
+/// @copyright Copyright (C) 2023 LAAS-CNRS, INRIA
 #pragma once
 
 #include "aligator/core/explicit-dynamics.hpp"
-#include "aligator/modelling/spaces/cartesian-product.hpp"
+#include <proxsuite-nlp/modelling/spaces/cartesian-product.hpp>
 
 namespace aligator {
 
@@ -18,13 +18,15 @@ struct DirectSumExplicitDynamicsTpl : ExplicitDynamicsModelTpl<_Scalar> {
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = ExplicitDynamicsModelTpl<Scalar>;
   using Manifold = ManifoldAbstractTpl<Scalar>;
-  using CartesianProduct = aligator::CartesianProductTpl<Scalar>;
+  using CartesianProduct = proxsuite::nlp::CartesianProductTpl<Scalar>;
   using BaseData = ExplicitDynamicsDataTpl<Scalar>;
 
   struct Data;
 
-  DirectSumExplicitDynamicsTpl(xyz::polymorphic<Base> f,
-                               xyz::polymorphic<Base> g);
+  DirectSumExplicitDynamicsTpl(shared_ptr<Base> f, shared_ptr<Base> g)
+      : Base(get_product_space(*f, *g), f->nu + g->nu), f_(f), g_(g) {
+    product_space_ = static_cast<CartesianProduct *>(this->space_next_.get());
+  }
 
   void forward(const ConstVectorRef &x, const ConstVectorRef &u,
                BaseData &data) const override;
@@ -36,27 +38,26 @@ struct DirectSumExplicitDynamicsTpl : ExplicitDynamicsModelTpl<_Scalar> {
     return std::make_shared<Data>(*this);
   }
 
-  xyz::polymorphic<Base> f_, g_;
+  shared_ptr<Base> f_, g_;
 
 private:
+  static auto get_product_space(Base const &f, Base const &g);
+  static Data &data_cast(BaseData &data) { return static_cast<Data &>(data); }
+
   /// pointer to casted cartesian product space; this pointer does not manage
   /// memory
-  CartesianProduct product_space_;
+  CartesianProduct const *product_space_;
 };
 
 template <typename Scalar>
-struct DirectSumExplicitDynamicsTpl<Scalar>::Data : BaseData {
-  shared_ptr<BaseData> data1_, data2_;
-  Data(DirectSumExplicitDynamicsTpl const &model);
-};
-
-template <typename Scalar>
-auto directSum(xyz::polymorphic<ExplicitDynamicsModelTpl<Scalar>> const &m1,
-               xyz::polymorphic<ExplicitDynamicsModelTpl<Scalar>> const &m2) {
-  return DirectSumExplicitDynamicsTpl<Scalar>(m1, m2);
+auto directSum(shared_ptr<ExplicitDynamicsModelTpl<Scalar>> const &m1,
+               shared_ptr<ExplicitDynamicsModelTpl<Scalar>> const &m2) {
+  return std::make_shared<DirectSumExplicitDynamicsTpl<Scalar>>(m1, m2);
 }
 
 } // namespace aligator
+
+#include "aligator/modelling/explicit-dynamics-direct-sum.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "./explicit-dynamics-direct-sum.txx"

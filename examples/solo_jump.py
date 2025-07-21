@@ -30,7 +30,6 @@ class Args(ArgsBase):
 
 
 args = Args().parse_args()
-q0[2] += 0.02
 pin.framesForwardKinematics(rmodel, rdata, q0)
 
 
@@ -43,7 +42,7 @@ act_matrix = np.eye(nv, nu, -6)
 effort_limit = rmodel.effortLimit[6:]
 print(f"Effort limit: {effort_limit}")
 
-constraint_models = create_ground_contact_model(rmodel, (0, 0, 100), 60)
+constraint_models = create_ground_contact_model(rmodel, (0, 0, 100), 50)
 prox_settings = pin.ProximalSettings(1e-9, 1e-10, 10)
 ode1 = dynamics.MultibodyConstraintFwdDynamics(
     space, act_matrix, constraint_models, prox_settings
@@ -65,29 +64,34 @@ def test():
 test()
 
 
-dt = 5e-3  # 20 ms
+dt = 20e-3  # 20 ms
 tf = 1.2  # in seconds
 nsteps = int(tf / dt)
 print("Num steps: {:d}".format(nsteps))
 
 switch_t0 = 0.4
-switch_t1 = 1.0  # landing time
+switch_t1 = 0.9  # landing time
 k0 = int(switch_t0 / dt)
 k1 = int(switch_t1 / dt)
 
 times = np.linspace(0, tf, nsteps + 1)
 mask = (switch_t0 <= times) & (times < switch_t1)
 
-q1 = q0.copy()
-# q1[3:7] = pin.exp3_quat(np.array([0.0, 0.0, np.pi / 3]))
-v0 = np.zeros(nv)
-x0_ref = np.concatenate((q0, v0))
+x0_ref = np.concatenate((q0, np.zeros(nv)))
+x_ref_flight = x0_ref.copy()
 w_x = np.ones(space.ndx) * 1e-2
-w_x[:nv] = 1.0
-w_x[3:6] = 0.1
+w_x[:6] = 0.0
 w_x[nv : nv + 6] = 0.0
 w_x = np.diag(w_x)
-w_u = np.eye(nu) * 1e-1
+w_u = np.eye(nu) * 1e-4
+
+
+def add_fly_high_cost(costs: aligator.CostStack, slope):
+    fly_high_w = 1.0
+    for fname, fid in FOOT_FRAME_IDS.items():
+        fn = aligator.FlyHighResidual(space, fid, slope, nu)
+        fl_cost = aligator.QuadraticResidualCost(space, fn, np.eye(2) * dt)
+        costs.addCost(fl_cost, fly_high_w / len(FOOT_FRAME_IDS))
 
 
 def create_land_fns():
@@ -95,7 +99,7 @@ def create_land_fns():
     for fname, fid in FOOT_FRAME_IDS.items():
         p_ref = rdata.oMf[fid].translation
         fn = aligator.FrameTranslationResidual(space.ndx, nu, rmodel, p_ref, fid)
-        out[fid] = fn[2]  # [2]
+        out[fid] = fn[2]
     return out
 
 
@@ -118,18 +122,21 @@ def create_land_cost(costs, w):
         costs.addCost(land_cost, w / len(FOOT_FRAME_IDS))
 
 
+x_ref_flight[2] = 1.2
 stages = []
 for k in range(nsteps):
     vf = ode1
+    wxlocal_k = w_x * dt
     if mask[k]:
         vf = ode2
-    xref = x0_ref.copy()
+    xref = x0_ref
 
-    xreg_cost = aligator.QuadraticStateCost(space, nu, xref, weights=w_x * dt)
+    xreg_cost = aligator.QuadraticStateCost(space, nu, xref, weights=wxlocal_k)
     ureg_cost = aligator.QuadraticControlCost(space, nu, weights=w_u * dt)
     cost = aligator.CostStack(space, nu)
     cost.addCost(xreg_cost)
     cost.addCost(ureg_cost)
+    add_fly_high_cost(cost, slope=50)
 
     dyn_model = dynamics.IntegratorSemiImplEuler(vf, dt)
     stm = aligator.StageModel(cost, dyn_model)
@@ -140,8 +147,8 @@ for k in range(nsteps):
             constraints.BoxConstraint(-effort_limit, effort_limit),
         )
     if k == k1:
-        pin.framesForwardKinematics(rmodel, rdata, q1)
-        for fid, fn in create_land_fns().items():
+        fns = create_land_fns()
+        for fid, fn in fns.items():
             stm.addConstraint(fn, constraints.EqualityConstraintSet())
         for fid, fn in create_land_vel_fns().items():
             stm.addConstraint(fn, constraints.EqualityConstraintSet())
@@ -149,20 +156,19 @@ for k in range(nsteps):
     stages.append(stm)
 
 
-w_xterm = w_x * 1
-xterm = np.concatenate((q1, v0))
-print("x0   :", x0_ref)
-print("xterm:", xterm)
-term_cost = aligator.QuadraticStateCost(space, nu, xterm, weights=w_xterm)
+w_xterm = w_x.copy()
+term_cost = aligator.QuadraticStateCost(space, nu, x0_ref, weights=w_x)
 
 problem = aligator.TrajOptProblem(x0_ref, stages, term_cost)
 mu_init = 1e-5
-tol = 1e-5
-solver = aligator.SolverProxDDP(tol, mu_init, verbose=aligator.VERBOSE, max_iters=300)
+tol = 1e-4
+solver = aligator.SolverProxDDP(tol, mu_init, verbose=aligator.VERBOSE, max_iters=100)
 solver.rollout_type = aligator.ROLLOUT_LINEAR
+solver.linear_solver_choice = aligator.LQ_SOLVER_PARALLEL
+# solver.sa_strategy = aligator.SA_FILTER
 solver.setNumThreads(args.num_threads)
 
-cb_ = aligator.HistoryCallback(solver)
+cb_ = aligator.HistoryCallback()
 solver.registerCallback("his", cb_)
 solver.setup(problem)
 
@@ -201,8 +207,7 @@ def make_plots(res: aligator.Results):
 
     fig4 = plt.figure()
     ax = fig4.add_subplot(111)
-    ax.hlines(tol, 0, res.num_iters, lw=2.2, alpha=0.8, colors="k")
-    plot_convergence(cb_, ax, res, show_al_iters=True)
+    plot_convergence(cb_, ax, res=res)
     fig4.tight_layout()
 
     _fig_dict = {"controls": fig1, "velocities": fig2, "foot_traj": fig3, "conv": fig4}
@@ -223,9 +228,7 @@ if __name__ == "__main__":
             visual_model=robot.visual_model,
             data=rdata,
         )
-        vizer.initViewer(
-            open=args.zmq_url is None, loadModel=True, zmq_url=args.zmq_url
-        )
+        vizer.initViewer(loadModel=True, zmq_url=args.zmq_url)
         # custom_color = np.asarray((53, 144, 243)) / 255.0
         # vizer.setBackgroundColor(col_bot=list(custom_color), col_top=(1, 1, 1, 1))
         manage_lights(vizer)
@@ -246,8 +249,7 @@ if __name__ == "__main__":
     qs = xs[:, :nq]
     vs = xs[:, nq:]
 
-    # FPS = min(30, 1.0 / dt)
-    FPS = 1.0 / dt
+    FPS = min(30, 1.0 / dt)
 
     if args.display:
         import contextlib

@@ -20,13 +20,12 @@ public:
   using SE3 = pinocchio::SE3Tpl<Scalar>;
   using Data = CenterOfMassVelocityDataTpl<Scalar>;
 
-  Model pin_model_;
+  shared_ptr<Model> pin_model_;
 
   CenterOfMassVelocityResidualTpl(const int ndx, const int nu,
-                                  const Model &model, const Vector3s &frame_vel)
-      : Base(ndx, nu, 3)
-      , pin_model_(model)
-      , v_ref_(frame_vel) {}
+                                  const shared_ptr<Model> &model,
+                                  const Vector3s &frame_vel)
+      : Base(ndx, nu, 3), pin_model_(model), v_ref_(frame_vel) {}
 
   const Vector3s &getReference() const { return v_ref_; }
   void setReference(const Eigen::Ref<const Vector3s> &v_new) { v_ref_ = v_new; }
@@ -59,6 +58,8 @@ struct CenterOfMassVelocityDataTpl : StageFunctionDataTpl<Scalar> {
 };
 
 } // namespace aligator
+
+#include "aligator/modelling/multibody/center-of-mass-velocity.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "./center-of-mass-velocity.txx"

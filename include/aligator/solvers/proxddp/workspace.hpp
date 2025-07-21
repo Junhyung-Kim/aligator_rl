@@ -1,21 +1,24 @@
 /// @file    workspace.hpp
 /// @brief   Define workspace for the ProxDDP solver.
-/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, 2022-2025 INRIA
+/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, INRIA
 #pragma once
 
-#include "aligator/solvers/workspace-base.hpp"
-#include "aligator/gar/blk-matrix.hpp"
+#include "aligator/core/workspace-base.hpp"
+#include "aligator/core/alm-weights.hpp"
 #include "aligator/gar/lqr-problem.hpp"
 
-#include "aligator/modelling/constraints/constraint-set-product.hpp"
+#include <proxsuite-nlp/modelling/constraints.hpp>
 
 namespace aligator {
+namespace {
+using proxsuite::nlp::ConstraintSetProductTpl;
+} // namespace
 
 template <typename Scalar>
 auto getConstraintProductSet(const ConstraintStackTpl<Scalar> &constraints) {
-  std::vector<xyz::polymorphic<ConstraintSetTpl<Scalar>>> components;
+  std::vector<ConstraintSetBase<Scalar> *> components;
   for (size_t i = 0; i < constraints.size(); i++) {
-    components.push_back(constraints.sets[i]);
+    components.push_back(constraints[i].set.get());
   }
   return ConstraintSetProductTpl<Scalar>{components, constraints.dims()};
 }
@@ -29,16 +32,17 @@ template <typename Scalar> struct WorkspaceTpl : WorkspaceBaseTpl<Scalar> {
   using StageModel = StageModelTpl<Scalar>;
   using Base = WorkspaceBaseTpl<Scalar>;
   using VecBool = Eigen::Matrix<bool, Eigen::Dynamic, 1>;
-  using KnotType = gar::LqrKnotTpl<Scalar>;
+  using CstrProxScaler = ConstraintProximalScalerTpl<Scalar>;
+  using KnotType = gar::LQRKnotTpl<Scalar>;
   using ConstraintSetProduct = ConstraintSetProductTpl<Scalar>;
   using BlkJacobianType = BlkMatrix<MatrixXs, -1, 2>; // jacobians
-  using LqrProblemType = gar::LqrProblemTpl<Scalar>;
 
   using Base::dyn_slacks;
   using Base::nsteps;
   using Base::problem_data;
 
-  LqrProblemType lqr_problem; //< Linear-quadratic subproblem
+  gar::LQRProblemTpl<Scalar> lqr_problem;   //< Linear-quadratic subproblem
+  std::vector<CstrProxScaler> cstr_scalers; //< Scaling for the constraints
 
   /// @name Lagrangian Gradients
   /// @{
@@ -104,9 +108,8 @@ template <typename Scalar> struct WorkspaceTpl : WorkspaceBaseTpl<Scalar> {
   /// Overall subproblem termination criterion.
   Scalar inner_criterion = 0.;
 
-  explicit WorkspaceTpl()
-      : Base() {}
-  explicit WorkspaceTpl(const TrajOptProblemTpl<Scalar> &problem);
+  WorkspaceTpl() : Base() {}
+  WorkspaceTpl(const TrajOptProblemTpl<Scalar> &problem);
 
   WorkspaceTpl(const WorkspaceTpl &) = delete;
   WorkspaceTpl &operator=(const WorkspaceTpl &) = delete;
@@ -114,38 +117,37 @@ template <typename Scalar> struct WorkspaceTpl : WorkspaceBaseTpl<Scalar> {
   WorkspaceTpl(WorkspaceTpl &&) = default;
   WorkspaceTpl &operator=(WorkspaceTpl &&) = default;
 
-  void cycleAppend(const TrajOptProblemTpl<Scalar> &problem,
-                   shared_ptr<StageDataTpl<Scalar>> data);
+  void cycleLeft();
 
   template <typename T>
   friend std::ostream &operator<<(std::ostream &oss,
                                   const WorkspaceTpl<T> &self);
-};
 
-template <typename Scalar>
-std::ostream &operator<<(std::ostream &oss, const WorkspaceTpl<Scalar> &self) {
-  return oss << fmt::format("{}", self);
-}
+  template <typename F>
+  void configureScalers(const TrajOptProblemTpl<Scalar> &problem,
+                        const Scalar &mu, F &&strat) {
+    cstr_scalers.reserve(nsteps + 1);
+
+    for (std::size_t t = 0; t < nsteps; t++) {
+      const StageModel &stage = *problem.stages_[t];
+      cstr_scalers.emplace_back(stage.constraints_, mu);
+      std::forward<F>(strat)(cstr_scalers[t]);
+    }
+
+    const ConstraintStackTpl<Scalar> &term_stack = problem.term_cstrs_;
+    if (!term_stack.empty()) {
+      cstr_scalers.emplace_back(term_stack, mu);
+    }
+  }
+};
 
 } // namespace aligator
 
 template <typename Scalar>
-struct fmt::formatter<aligator::WorkspaceTpl<Scalar>> {
-  constexpr auto parse(format_parse_context &ctx) const
-      -> decltype(ctx.begin()) {
-    return ctx.end();
-  }
-
-  auto format(const aligator::WorkspaceTpl<Scalar> &ws,
-              format_context &ctx) const -> decltype(ctx.out()) {
-    return fmt::format_to(ctx.out(),
-                          "Workspace {{"
-                          "\n  nsteps:       \t{:d}"
-                          "\n  n_multipliers:\t{:d}"
-                          "\n}}",
-                          ws.nsteps, ws.lams_plus.size());
-  }
+struct fmt::formatter<aligator::WorkspaceTpl<Scalar>> : fmt::ostream_formatter {
 };
+
+#include "./workspace.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "./workspace.txx"

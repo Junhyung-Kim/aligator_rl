@@ -9,8 +9,7 @@ WorkspaceFDDPTpl<Scalar>::WorkspaceFDDPTpl(
     const TrajOptProblemTpl<Scalar> &problem)
     : Base(problem) {
   const std::size_t nsteps = this->nsteps;
-  if (!problem.checkIntegrity())
-    ALIGATOR_RUNTIME_ERROR("Problem failed integrity check.");
+  problem.checkIntegrity();
 
   this->dyn_slacks.resize(nsteps + 1);
   dxs.resize(nsteps + 1);

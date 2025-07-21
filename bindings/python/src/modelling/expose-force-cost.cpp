@@ -5,14 +5,13 @@
 #include "aligator/python/fwd.hpp"
 #include "aligator/python/modelling/multibody-utils.hpp"
 
+#ifdef ALIGATOR_PINOCCHIO_V3
 #include "aligator/modelling/multibody/contact-force.hpp"
 #include "aligator/modelling/multibody/multibody-wrench-cone.hpp"
-#include "aligator/modelling/multibody/multibody-friction-cone.hpp"
 
 namespace aligator {
 namespace python {
 
-using Vector3or6 = Eigen::Matrix<double, -1, 1, Eigen::ColMajor, 6, 1>;
 using context::ConstVectorRef;
 using context::MultibodyPhaseSpace;
 using context::PinModel;
@@ -29,18 +28,12 @@ using RigidConstraintModelVector =
 using RigidConstraintDataVector =
     PINOCCHIO_STD_VECTOR_WITH_EIGEN_ALLOCATOR(RigidConstraintData);
 
-const PolymorphicMultiBaseVisitor<StageFunction> func_visitor;
-
 void exposeContactForce() {
   using ContactForceResidual = ContactForceResidualTpl<Scalar>;
   using ContactForceData = ContactForceDataTpl<Scalar>;
 
   using MultibodyWrenchConeResidual = MultibodyWrenchConeResidualTpl<Scalar>;
   using MultibodyWrenchConeData = MultibodyWrenchConeDataTpl<Scalar>;
-
-  using MultibodyFrictionConeResidual =
-      MultibodyFrictionConeResidualTpl<Scalar>;
-  using MultibodyFrictionConeData = MultibodyFrictionConeDataTpl<Scalar>;
 
   bp::class_<ContactForceResidual, bp::bases<StageFunction>>(
       "ContactForceResidual",
@@ -50,10 +43,10 @@ void exposeContactForce() {
       .def(bp::init<int, PinModel, const context::MatrixXs &,
                     const RigidConstraintModelVector &,
                     const pinocchio::ProximalSettingsTpl<Scalar> &,
-                    const Eigen::VectorXd &, const std::string &>(bp::args(
-          "self", "ndx", "model", "actuation_matrix", "constraint_models",
-          "prox_settings", "fref", "contact_name")))
-      .def(func_visitor)
+                    const context::Vector6s &, int>(
+          bp::args("self", "ndx", "model", "actuation_matrix",
+                   "constraint_models", "prox_settings", "fref", "contact_id")))
+      .def(FrameAPIVisitor<ContactForceResidual>())
       .def("getReference", &ContactForceResidual::getReference,
            bp::args("self"), bp::return_internal_reference<>(),
            "Get the target force.")
@@ -73,12 +66,11 @@ void exposeContactForce() {
       bp::no_init)
       .def(bp::init<int, PinModel, const context::MatrixXs &,
                     const RigidConstraintModelVector &,
-                    const pinocchio::ProximalSettingsTpl<Scalar> &,
-                    const std::string &, const double, const double,
-                    const double>(bp::args(
+                    const pinocchio::ProximalSettingsTpl<Scalar> &, const int,
+                    const double, const double, const double>(bp::args(
           "self", "ndx", "model", "actuation_matrix", "constraint_models",
-          "prox_settings", "contact_name", "mu", "half_length", "half_width")))
-      .def(func_visitor)
+          "prox_settings", "contact_id", "mu", "half_length", "half_width")))
+      .def(FrameAPIVisitor<MultibodyWrenchConeResidual>())
       .def_readwrite("constraint_models",
                      &MultibodyWrenchConeResidual::constraint_models_);
 
@@ -88,29 +80,11 @@ void exposeContactForce() {
       .def_readwrite("pin_data", &MultibodyWrenchConeData::pin_data_)
       .def_readwrite("constraint_datas",
                      &MultibodyWrenchConeData::constraint_datas_);
-
-  bp::class_<MultibodyFrictionConeResidual, bp::bases<StageFunction>>(
-      "MultibodyFrictionConeResidual", "A residual function :math:`r(x) = Af` ",
-      bp::no_init)
-      .def(bp::init<int, PinModel, const context::MatrixXs &,
-                    const RigidConstraintModelVector &,
-                    const pinocchio::ProximalSettingsTpl<Scalar> &,
-                    const std::string &, const double>(
-          bp::args("self", "ndx", "model", "actuation_matrix",
-                   "constraint_models", "prox_settings", "contact_name", "mu")))
-      .def(func_visitor)
-      .def_readwrite("constraint_models",
-                     &MultibodyFrictionConeResidual::constraint_models_);
-
-  bp::class_<MultibodyFrictionConeData, bp::bases<StageFunctionData>>(
-      "MultibodyFrictionConeData", bp::no_init)
-      .def_readwrite("tau", &MultibodyFrictionConeData::tau_)
-      .def_readwrite("pin_data", &MultibodyFrictionConeData::pin_data_)
-      .def_readwrite("constraint_datas",
-                     &MultibodyFrictionConeData::constraint_datas_);
 }
 
 } // namespace python
 } // namespace aligator
+
+#endif
 
 #endif

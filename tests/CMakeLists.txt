@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2022-2024 LAAS-CNRS, 2022-2025 INRIA
+# Copyright (C) 2022-2023 LAAS-CNRS, INRIA
 #
 
 find_package(Boost REQUIRED COMPONENTS unit_test_framework)
@@ -18,9 +18,9 @@ message(STATUS "Test headers: ${TEST_HEADERS}")
 function(_add_test_prototype name prefix dependencies)
   set(test_name "${PROJECT_NAME}-test-cpp-${prefix}${name}")
   set(test_file ${name}.cpp)
-  message(STATUS "Adding cpp test: ${test_name} (${test_file})")
+  message(STATUS "Adding C++ test: ${test_file} (${test_name})")
 
-  ADD_UNIT_TEST(${test_name} ${test_file} ${TEST_HEADERS})
+  add_unit_test(${test_name} ${test_file} ${TEST_HEADERS})
   set_target_properties(${test_name} PROPERTIES LINKER_LANGUAGE CXX)
   set_standard_output_directory(${test_name})
   target_include_directories(${test_name} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
@@ -31,8 +31,8 @@ function(_add_test_prototype name prefix dependencies)
   set(MODULE_NAME "${name}Test")
   string(REGEX REPLACE "-" "_" MODULE_NAME ${MODULE_NAME})
 
-  ADD_TEST_CFLAGS(${test_name} "-DBOOST_TEST_DYN_LINK")
-  ADD_TEST_CFLAGS(${test_name} "-DBOOST_TEST_MODULE=${MODULE_NAME}")
+  add_test_cflags(${test_name} "-DBOOST_TEST_DYN_LINK")
+  add_test_cflags(${test_name} "-DBOOST_TEST_MODULE=${MODULE_NAME}")
 
   target_link_libraries(${test_name} PUBLIC ${dependencies})
   target_link_libraries(${test_name} PRIVATE Boost::unit_test_framework)
@@ -42,32 +42,23 @@ function(add_aligator_test name)
   _add_test_prototype(${name} "" ${PROJECT_NAME})
 endfunction()
 
-set(
-  TEST_NAMES
-  continuous
-  constraints
-  costs
-  eigen-map
-  integrators
-  lqr
-  managed-matrix
-  problem
-  manifolds
-  solver-storage
-  utils
+set(TEST_NAMES
+    continuous
+    costs
+    integrators
+    lqr
+    problem
+    solver-storage
+    utils
 )
-
-if(BUILD_WITH_PINOCCHIO_SUPPORT)
-  list(APPEND TEST_NAMES forces cycling mpc-cycle)
-endif()
-
-if(CHECK_RUNTIME_MALLOC)
-  list(APPEND TEST_NAMES nomalloc)
-endif()
 
 foreach(test_name ${TEST_NAMES})
   add_aligator_test(${test_name})
 endforeach()
+
+if(CHECK_RUNTIME_MALLOC)
+  add_aligator_test(nomalloc)
+endif()
 
 add_subdirectory(gar)
 

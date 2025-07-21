@@ -1,7 +1,7 @@
 #pragma once
 
 #include "aligator/core/unary-function.hpp"
-#include "aligator/third-party/polymorphic_cxx14.h"
+#include "aligator/core/function-abstract.hpp"
 
 namespace aligator {
 
@@ -19,14 +19,14 @@ public:
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   ALIGATOR_UNARY_FUNCTION_INTERFACE(Scalar);
-  using FunPtr = xyz::polymorphic<StageFunctionTpl<Scalar>>;
+  using FunPtr = shared_ptr<StageFunctionTpl<Scalar>>;
   using BaseData = typename Base::Data;
   using Data = CentroidalWrapperDataTpl<Scalar>;
 
   CentroidalWrapperResidualTpl(FunPtr centroidal_cost)
       : Base(centroidal_cost->ndx1 + centroidal_cost->nu, centroidal_cost->nu,
-             centroidal_cost->nr)
-      , centroidal_cost_(centroidal_cost) {}
+             centroidal_cost->nr),
+        centroidal_cost_(centroidal_cost) {}
 
   void evaluate(const ConstVectorRef &x, BaseData &data) const;
 
@@ -51,6 +51,8 @@ struct CentroidalWrapperDataTpl : StageFunctionDataTpl<Scalar> {
 
 } // namespace aligator
 
+#include "aligator/modelling/centroidal/centroidal-wrapper.hxx"
+
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-#include "aligator/modelling/centroidal/centroidal-wrapper.txx"
+#include "./centroidal-wrapper.txx"
 #endif

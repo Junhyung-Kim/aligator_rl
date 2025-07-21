@@ -32,21 +32,20 @@ struct IntegratorMidpointTpl : IntegratorAbstractTpl<_Scalar> {
   using ContinuousDynamics = ContinuousDynamicsAbstractTpl<Scalar>;
   using Manifold = ManifoldAbstractTpl<Scalar>;
   using Data = IntegratorMidpointDataTpl<Scalar>;
-  using BaseData = DynamicsDataTpl<Scalar>;
 
   Scalar timestep_;
 
-  IntegratorMidpointTpl(
-      const xyz::polymorphic<ContinuousDynamics> &cont_dynamics,
-      const Scalar timestep);
+  IntegratorMidpointTpl(const shared_ptr<ContinuousDynamics> &cont_dynamics,
+                        const Scalar timestep);
 
   void evaluate(const ConstVectorRef &x, const ConstVectorRef &u,
-                const ConstVectorRef &y, BaseData &data) const;
+                const ConstVectorRef &y, DynamicsDataTpl<Scalar> &data) const;
 
   void computeJacobians(const ConstVectorRef &x, const ConstVectorRef &u,
-                        const ConstVectorRef &y, BaseData &data) const;
+                        const ConstVectorRef &y,
+                        DynamicsDataTpl<Scalar> &data) const;
 
-  shared_ptr<BaseData> createData() const;
+  shared_ptr<DynamicsDataTpl<Scalar>> createData() const;
 };
 
 template <typename _Scalar>
@@ -63,14 +62,10 @@ struct IntegratorMidpointDataTpl : IntegratorDataTpl<_Scalar> {
   MatrixXs Jtm1;
 
   explicit IntegratorMidpointDataTpl(
-      const IntegratorMidpointTpl<Scalar> &integrator)
-      : Base(integrator)
-      , x1_(integrator.space().neutral())
-      , dx1_(this->ndx1)
-      , J_v_0(this->ndx1, this->ndx1)
-      , J_v_1(this->ndx1, this->ndx1)
-      , Jtm0(this->ndx1, this->ndx1)
-      , Jtm1(this->ndx1, this->ndx1) {
+      const IntegratorMidpointTpl<Scalar> *integrator)
+      : Base(integrator), x1_(integrator->space().neutral()), dx1_(this->ndx1),
+        J_v_0(this->ndx1, this->ndx1), J_v_1(this->ndx1, this->ndx1),
+        Jtm0(this->ndx1, this->ndx1), Jtm1(this->ndx1, this->ndx1) {
     x1_.setZero();
     dx1_.setZero();
     J_v_0.setZero();
@@ -80,10 +75,7 @@ struct IntegratorMidpointDataTpl : IntegratorDataTpl<_Scalar> {
   }
 };
 
-#ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-extern template struct IntegratorMidpointTpl<context::Scalar>;
-extern template struct IntegratorMidpointDataTpl<context::Scalar>;
-#endif
-
 } // namespace dynamics
 } // namespace aligator
+
+#include "aligator/modelling/dynamics/integrator-midpoint.hxx"

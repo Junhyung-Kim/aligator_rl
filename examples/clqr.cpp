@@ -4,24 +4,25 @@
 #include "aligator/modelling/state-error.hpp"
 #include "aligator/solvers/proxddp/solver-proxddp.hpp"
 
-#include "aligator/modelling/constraints.hpp"
-#include <aligator/fmt-eigen.hpp>
+#include <proxsuite-nlp/modelling/constraints.hpp>
+#include <proxsuite-nlp/fmt-eigen.hpp>
 #include <iostream>
 #include <random>
 
 using namespace aligator;
 
-using Space = VectorSpaceTpl<double>;
+using Space = proxsuite::nlp::VectorSpaceTpl<double>;
 using LinearDynamics = dynamics::LinearDiscreteDynamicsTpl<double>;
 using LinearFunction = LinearFunctionTpl<double>;
-using BoxConstraint = BoxConstraintTpl<double>;
-using EqualityConstraint = EqualityConstraintTpl<double>;
+using BoxConstraint = proxsuite::nlp::BoxConstraintTpl<double>;
+using EqualityConstraint = proxsuite::nlp::EqualityConstraintTpl<double>;
 using QuadraticCost = QuadraticCostTpl<double>;
 using context::CostAbstract;
-using context::MatrixXs;
 using context::StageModel;
 using context::TrajOptProblem;
-using context::VectorXs;
+
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
 
 static std::mt19937_64 urng{42};
 struct NormalGen {
@@ -34,49 +35,54 @@ int main() {
   const size_t nsteps = 100;
   const auto nx = 4;
   const auto nu = 2;
-  const auto space = Space(nx);
+  const auto space = std::make_shared<Space>(nx);
 
   NormalGen norm_gen;
-  MatrixXs A;
+  MatrixXd A;
   // clang-format off
   A.setIdentity(nx, nx);
-  A.bottomRightCorner<2, 2>() = MatrixXs::NullaryExpr(2, 2, norm_gen);
-  MatrixXs B = MatrixXs::NullaryExpr(nx, nu, norm_gen);
+  A.bottomRightCorner<2, 2>() = MatrixXd::NullaryExpr(2, 2, norm_gen);
+  MatrixXd B = MatrixXd::NullaryExpr(nx, nu, norm_gen);
   // clang-format on
 
-  VectorXs x0 = VectorXs::NullaryExpr(nx, norm_gen);
+  VectorXd x0 = VectorXd::NullaryExpr(nx, norm_gen);
 
-  auto dyn_model = LinearDynamics(A, B, VectorXs::Zero(nx));
-
-  MatrixXs Q = MatrixXs::NullaryExpr(nx, nx, norm_gen);
-  Q = Q.transpose() * Q;
-  VectorXs q = VectorXs::Zero(nx);
-
-  MatrixXs R = MatrixXs::NullaryExpr(nu, nu, norm_gen);
-  R = R.transpose() * R;
-  VectorXs r = VectorXs::Zero(nu);
-
-  QuadraticCost cost = QuadraticCost(Q, R, q, r);
-  QuadraticCost term_cost = QuadraticCost(Q * 10., MatrixXs());
-  assert(term_cost.nu == 0);
-
-  double ctrlUpperBound = 0.3;
-  auto stage = StageModel(cost, dyn_model);
+  auto dyn_model = std::make_shared<LinearDynamics>(A, B, VectorXd::Zero(nx));
+  shared_ptr<CostAbstract> cost, term_cost;
   {
-    auto box = BoxConstraint(-ctrlUpperBound * VectorXs::Ones(nu),
-                             ctrlUpperBound * VectorXs::Ones(nu));
-    auto u0 = VectorXs::Zero(nu);
-    auto func = ControlErrorResidualTpl<double>(nx, u0);
-    stage.addConstraint(func, box);
+    MatrixXd Q = MatrixXd::NullaryExpr(nx, nx, norm_gen);
+    Q = Q.transpose() * Q;
+    VectorXd q = VectorXd::Zero(nx);
+
+    MatrixXd R = MatrixXd::NullaryExpr(nu, nu, norm_gen);
+    R = R.transpose() * R;
+    VectorXd r = VectorXd::Zero(nu);
+
+    cost = std::make_shared<QuadraticCost>(Q, R, q, r);
+    term_cost = std::make_shared<QuadraticCost>(Q * 10., MatrixXd());
+    assert(term_cost->nu == 0);
   }
 
-  std::vector<xyz::polymorphic<StageModel>> stages(nsteps, stage);
+  double ctrlUpperBound = 0.3;
+  auto stage = std::make_shared<StageModel>(cost, dyn_model);
+  {
+    auto box =
+        std::make_shared<BoxConstraint>(-ctrlUpperBound * VectorXd::Ones(nu),
+                                        ctrlUpperBound * VectorXd::Ones(nu));
+    auto u0 = VectorXd::Zero(nu);
+    auto func = std::make_shared<ControlErrorResidualTpl<double>>(nx, u0);
+    stage->addConstraint(func, box);
+  }
+
+  std::vector<decltype(stage)> stages(nsteps, stage);
   TrajOptProblem problem(x0, stages, term_cost);
 
   bool terminal = false;
   if (terminal) {
-    StateErrorResidualTpl<double> func(space, nu, VectorXs::Ones(nx));
-    problem.addTerminalConstraint(func, EqualityConstraint());
+    auto xf = VectorXd::Ones(nx);
+    auto func = std::make_shared<StateErrorResidualTpl<double>>(space, nu, xf);
+    problem.addTerminalConstraint(
+        {func, std::make_shared<EqualityConstraint>()});
   }
 
   const double tol = 1e-6;

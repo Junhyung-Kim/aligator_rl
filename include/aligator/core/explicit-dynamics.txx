@@ -1,7 +1,6 @@
 #pragma once
 
 #include "aligator/context.hpp"
-#include "explicit-dynamics.hpp"
 
 namespace aligator {
 

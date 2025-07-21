@@ -3,19 +3,18 @@
 #include "aligator/core/function-abstract.hpp"
 
 namespace aligator {
-///
-/// @brief   A simple function \f$f(u) = [u_{\min} - u; u - u_{\max}]\f$.
-///
-/// @note This function was initially meant to be used along with
-/// NegativeOrthantTpl to create control bound constraints.
-/// For this purpose, please use BoxConstraintTpl instead.
-/// @deprecated This class is not meant to be used anymore, and has been
-/// deprecated. It might be removed in the future. Use BoxContraintTpl to
-/// implement control bounds. See related note.
+/**
+ * @brief   A simple function \f$f(u) = [u_{\min} - u; u - u_{\max}]\f$.
+ *
+ * @details This function should be used along
+ * proxsuite::nlp::NegativeOrthantTpl to create control bound constraints \f[
+ * -u_\min \leq u \leq u_\max. \f]
+ */
 template <typename _Scalar>
-struct [[deprecated("ControlBoxFunction should not be used. Instead, just use "
-                    "the identity function and a BoxConstraintTpl.")]]
-ControlBoxFunctionTpl : StageFunctionTpl<_Scalar> {
+struct ALIGATOR_DEPRECATED_MESSAGE(
+    "ControlBoxFunction should not be used. Instead, just use the identity "
+    "function and a BoxConstraint.") ControlBoxFunctionTpl
+    : StageFunctionTpl<_Scalar> {
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = StageFunctionTpl<Scalar>;
@@ -34,7 +33,7 @@ ControlBoxFunctionTpl : StageFunctionTpl<_Scalar> {
                         const Scalar umax);
 
   void evaluate(const ConstVectorRef &, const ConstVectorRef &u,
-                Data &data) const override;
+                const ConstVectorRef &, Data &data) const;
 
   /**
    * @copybrief Base::computeJacobians()
@@ -42,11 +41,11 @@ ControlBoxFunctionTpl : StageFunctionTpl<_Scalar> {
    * are already set in createData().
    */
   void computeJacobians(const ConstVectorRef &, const ConstVectorRef &,
-                        Data &data) const override;
+                        const ConstVectorRef &, Data &data) const;
 
   /// @copybrief Base::createData()
   /// @details   This override sets the appropriate values of the Jacobians.
-  virtual shared_ptr<Data> createData() const override;
+  virtual shared_ptr<Data> createData() const;
 };
 
 } // namespace aligator

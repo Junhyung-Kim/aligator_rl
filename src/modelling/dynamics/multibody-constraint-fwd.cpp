@@ -1,11 +1,15 @@
 /// @copyright Copyright (C) 2023-2024 LAAS-CNRS, INRIA
 #include "aligator/fwd.hpp"
 
-#include "aligator/modelling/dynamics/multibody-constraint-fwd.hxx"
+#ifdef ALIGATOR_PINOCCHIO_V3
+#include "aligator/modelling/dynamics/multibody-constraint-fwd.hpp"
 
-namespace aligator::dynamics {
+namespace aligator {
+namespace dynamics {
 
 template struct MultibodyConstraintFwdDynamicsTpl<context::Scalar>;
 template struct MultibodyConstraintFwdDataTpl<context::Scalar>;
 
-} // namespace aligator::dynamics
+} // namespace dynamics
+} // namespace aligator
+#endif

@@ -26,7 +26,7 @@ struct IntegratorSemiImplEulerTpl : ExplicitIntegratorAbstractTpl<_Scalar> {
   /// Integration time step \f$h\f$.
   Scalar timestep_;
 
-  IntegratorSemiImplEulerTpl(const xyz::polymorphic<ODEType> &cont_dynamics,
+  IntegratorSemiImplEulerTpl(const shared_ptr<ODEType> &cont_dynamics,
                              const Scalar timestep);
 
   void forward(const ConstVectorRef &x, const ConstVectorRef &u,
@@ -35,7 +35,7 @@ struct IntegratorSemiImplEulerTpl : ExplicitIntegratorAbstractTpl<_Scalar> {
   void dForward(const ConstVectorRef &x, const ConstVectorRef &u,
                 BaseData &data) const;
 
-  shared_ptr<DynamicsDataTpl<Scalar>> createData() const {
+  shared_ptr<StageFunctionDataTpl<Scalar>> createData() const {
     return std::make_shared<Data>(this);
   }
 };
@@ -44,7 +44,7 @@ template <typename Scalar>
 struct IntegratorSemiImplDataTpl : ExplicitIntegratorDataTpl<Scalar> {
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = ExplicitIntegratorDataTpl<Scalar>;
-  using ODEData = ContinuousDynamicsDataTpl<Scalar>;
+  using ODEData = ODEDataTpl<Scalar>;
 
   MatrixXs Jtmp_xnext2;
   MatrixXs Jtmp_u;
@@ -59,10 +59,7 @@ struct IntegratorSemiImplDataTpl : ExplicitIntegratorDataTpl<Scalar> {
   using Base::xnext_;
 };
 
-#ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
-extern template struct IntegratorSemiImplEulerTpl<context::Scalar>;
-extern template struct IntegratorSemiImplDataTpl<context::Scalar>;
-#endif
-
 } // namespace dynamics
 } // namespace aligator
+
+#include "aligator/modelling/dynamics/integrator-semi-euler.hxx"

@@ -1,5 +1,5 @@
 /// @copyright Copyright (C) 2024 LAAS-CNRS, INRIA
-#include "aligator/modelling/dynamics/integrator-abstract.hxx"
+#include "aligator/modelling/dynamics/integrator-abstract.hpp"
 
 namespace aligator {
 namespace dynamics {

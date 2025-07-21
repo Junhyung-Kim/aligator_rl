@@ -45,7 +45,6 @@ T_ss = 40  # Singel support time
 # Define contact points throughout horizon
 x_forward = 0.05
 cp1 = [
-    ["LF", "RF", "LB", "RB"],
     [True, True, True, True],
     [
         np.array([0.2, 0.1, 0.0]),
@@ -55,7 +54,6 @@ cp1 = [
     ],
 ]
 cp2 = [
-    ["LF", "RF", "LB", "RB"],
     [False, True, True, False],
     [
         np.array([0.2, 0.1, 0.0]),
@@ -65,7 +63,6 @@ cp2 = [
     ],
 ]
 cp3 = [
-    ["LF", "RF", "LB", "RB"],
     [True, True, True, True],
     [
         np.array([0.25, 0.1, 0.0]),
@@ -75,7 +72,6 @@ cp3 = [
     ],
 ]
 cp4 = [
-    ["LF", "RF", "LB", "RB"],
     [True, False, False, True],
     [
         np.array([0.25, 0.1, 0.0]),
@@ -85,7 +81,6 @@ cp4 = [
     ],
 ]
 cp5 = [
-    ["LF", "RF", "LB", "RB"],
     [True, True, True, True],
     [
         np.array([0.25, 0.1, 0.0]),
@@ -95,7 +90,6 @@ cp5 = [
     ],
 ]
 cp6 = [
-    ["LF", "RF", "LB", "RB"],
     [False, True, True, False],
     [
         np.array([0.25, 0.1, 0.0]),
@@ -105,7 +99,6 @@ cp6 = [
     ],
 ]
 cp7 = [
-    ["LF", "RF", "LB", "RB"],
     [True, True, True, True],
     [
         np.array([0.3, 0.1, 0.0]),
@@ -123,10 +116,10 @@ contact_points = (
     + [cp6] * T_ss
     + [cp7] * (T_ds + 50)
 )
-com_final = cp7[2][0]
-com_final += cp7[2][1]
-com_final += cp7[2][2]
-com_final += cp7[2][3]
+com_final = cp7[1][0]
+com_final += cp7[1][1]
+com_final += cp7[1][2]
+com_final += cp7[1][3]
 com_final /= 4
 com_final[2] = com_initial[2]
 
@@ -157,7 +150,7 @@ def create_dynamics(nspace, contact_map):
 
 
 def createStage(cp, cp_previous):
-    contact_map = aligator.ContactMap(cp[0], cp[1], cp[2])
+    contact_map = aligator.ContactMap(cp[0], cp[1])
     rcost = aligator.CostStack(space, nu)
 
     linear_acc = aligator.CentroidalAccelerationResidual(
@@ -193,9 +186,9 @@ def createStage(cp, cp_previous):
     stm = aligator.StageModel(rcost, create_dynamics(space, contact_map))
     for i in range(len(cp[0])):
         if cp[0][i]:
-            cone_cstr = aligator.CentroidalFrictionConeResidual(nxc, nu, i, mu, 1e-3)
+            cone_cstr = aligator.FrictionConeResidual(nxc, nu, i, mu, 1e-3)
             if force_size == 6:
-                cone_cstr = aligator.CentroidalWrenchConeResidual(
+                cone_cstr = aligator.WrenchConeResidual(
                     nxc, nu, i, mu, foot_length, foot_width
                 )
             wrapped_cstr = aligator.CentroidalWrapperResidual(cone_cstr)
@@ -215,12 +208,8 @@ stages = [createStage(contact_points[0], contact_points[0])]
 for i in range(1, T):
     stages.append(createStage(contact_points[i], contact_points[i - 1]))
 
-contact_map_init = aligator.ContactMap(
-    contact_points[0][0], contact_points[0][1], contact_points[0][2]
-)
-contact_map_ter = aligator.ContactMap(
-    contact_points[-1][0], contact_points[-1][1], contact_points[-1][2]
-)
+contact_map_init = aligator.ContactMap(contact_points[0][0], contact_points[0][1])
+contact_map_ter = aligator.ContactMap(contact_points[-1][0], contact_points[-1][1])
 
 init_linear_acc_cstr = aligator.CentroidalWrapperResidual(
     aligator.CentroidalAccelerationResidual(
@@ -264,17 +253,21 @@ com_cstr = aligator.CentroidalWrapperResidual(
     aligator.CentroidalCoMResidual(nxc, nu, com_final)
 )
 
-problem.addTerminalConstraint(com_cstr, constraints.EqualityConstraintSet())
+term_constraint_com = aligator.StageConstraint(
+    com_cstr, constraints.EqualityConstraintSet()
+)
+problem.addTerminalConstraint(term_constraint_com)
 
 # Solver initialization
 TOL = 1e-5
 mu_init = 1e-8
+rho_init = 0.0
 max_iters = 100
 verbose = aligator.VerboseLevel.VERBOSE
-solver = aligator.SolverProxDDP(TOL, mu_init, verbose=verbose)
+solver = aligator.SolverProxDDP(TOL, mu_init, rho_init, verbose=verbose)
 # solver = aligator.SolverFDDP(TOL, verbose=verbose)
 solver.rollout_type = aligator.ROLLOUT_LINEAR
-# print("LDLT algo choice:", solver.ldlt_algo_choice)
+print("LDLT algo choice:", solver.ldlt_algo_choice)
 # solver = aligator.SolverFDDP(TOL, verbose=verbose)
 solver.max_iters = max_iters
 solver.sa_strategy = aligator.SA_FILTER  # FILTER or LINESEARCH
@@ -322,7 +315,7 @@ for i in range(T):
             fj = results.xs[i][9 + j * force_size : 9 + (j + 1) * force_size]
         ci = results.xs[i][0:3]
         linacc += fj[:3]
-        angacc += np.cross(contact_points[i][2][j] - ci, fj[:3])
+        angacc += np.cross(contact_points[i][1][j] - ci, fj[:3])
         if force_size == 6:
             angacc += fj[3:]
     for z in range(3):

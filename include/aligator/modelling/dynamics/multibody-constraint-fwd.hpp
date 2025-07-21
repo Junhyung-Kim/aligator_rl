@@ -3,7 +3,7 @@
 
 #include "aligator/modelling/dynamics/ode-abstract.hpp"
 
-#include "aligator/modelling/spaces/multibody.hpp"
+#include <proxsuite-nlp/modelling/spaces/multibody.hpp>
 #include <pinocchio/multibody/data.hpp>
 
 #include <pinocchio/algorithm/proximal.hpp>
@@ -22,29 +22,27 @@ struct MultibodyConstraintFwdDynamicsTpl : ODEAbstractTpl<_Scalar> {
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = ODEAbstractTpl<Scalar>;
-  using BaseData = ContinuousDynamicsDataTpl<Scalar>;
+  using BaseData = ODEDataTpl<Scalar>;
   using ContDataAbstract = ContinuousDynamicsDataTpl<Scalar>;
   using Data = MultibodyConstraintFwdDataTpl<Scalar>;
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
   using RigidConstraintModelVector = PINOCCHIO_STD_VECTOR_WITH_EIGEN_ALLOCATOR(
-      pinocchio::RigidConstraintModelTpl<Scalar>);
+      pinocchio::RigidConstraintModel);
   using RigidConstraintDataVector =
       PINOCCHIO_STD_VECTOR_WITH_EIGEN_ALLOCATOR(pinocchio::RigidConstraintData);
-#pragma GCC diagnostic pop
   using ProxSettings = pinocchio::ProximalSettingsTpl<Scalar>;
-  using Manifold = MultibodyPhaseSpace<Scalar>;
+  using Manifold = proxsuite::nlp::MultibodyPhaseSpace<Scalar>;
 
-  Manifold space_;
+  using ManifoldPtr = shared_ptr<Manifold>;
+  ManifoldPtr space_;
   MatrixXs actuation_matrix_;
   RigidConstraintModelVector constraint_models_;
   ProxSettings prox_settings_;
 
-  const Manifold &space() const { return space_; }
-  int ntau() const { return space_.getModel().nv; }
+  const Manifold &space() const { return *space_; }
+  int ntau() const { return space_->getModel().nv; }
 
   MultibodyConstraintFwdDynamicsTpl(
-      const Manifold &state, const MatrixXs &actuation,
+      const ManifoldPtr &state, const MatrixXs &actuation,
       const RigidConstraintModelVector &constraint_models,
       const ProxSettings &prox_settings);
 
@@ -57,17 +55,13 @@ struct MultibodyConstraintFwdDynamicsTpl : ODEAbstractTpl<_Scalar> {
 };
 
 template <typename Scalar>
-struct MultibodyConstraintFwdDataTpl : ContinuousDynamicsDataTpl<Scalar> {
-  using Base = ContinuousDynamicsDataTpl<Scalar>;
+struct MultibodyConstraintFwdDataTpl : ODEDataTpl<Scalar> {
+  using Base = ODEDataTpl<Scalar>;
   using VectorXs = typename math_types<Scalar>::VectorXs;
   using MatrixXs = typename math_types<Scalar>::MatrixXs;
   using PinDataType = pinocchio::DataTpl<Scalar>;
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-  using RigidConstraintData = pinocchio::RigidConstraintDataTpl<Scalar>;
-#pragma GCC diagnostic pop
   using RigidConstraintDataVector =
-      PINOCCHIO_STD_VECTOR_WITH_EIGEN_ALLOCATOR(RigidConstraintData);
+      PINOCCHIO_STD_VECTOR_WITH_EIGEN_ALLOCATOR(pinocchio::RigidConstraintData);
 
   VectorXs tau_;
   MatrixXs dtau_dx_;
@@ -82,6 +76,8 @@ struct MultibodyConstraintFwdDataTpl : ContinuousDynamicsDataTpl<Scalar> {
 
 } // namespace dynamics
 } // namespace aligator
+
+#include "aligator/modelling/dynamics/multibody-constraint-fwd.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "aligator/modelling/dynamics/multibody-constraint-fwd.txx"

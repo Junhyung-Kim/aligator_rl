@@ -1,23 +1,21 @@
 /// @file
-/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, 2022-2025 INRIA
+/// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 #pragma once
 
 #include "aligator/python/fwd.hpp"
 
-#include "aligator/modelling/dynamics/context.hpp"
 #include "aligator/modelling/dynamics/continuous-dynamics-abstract.hpp"
 #include "aligator/modelling/dynamics/ode-abstract.hpp"
 
 namespace aligator {
 namespace python {
 
-template <class T = context::ContinuousDynamicsAbstract>
-struct PyContinuousDynamics final
-    : T,
-      PolymorphicWrapper<PyContinuousDynamics<T>, T> {
-  using Data = context::ContinuousDynamicsData;
+template <class T = dynamics::ContinuousDynamicsAbstractTpl<context::Scalar>>
+struct PyContinuousDynamics : T, bp::wrapper<T> {
+  using Data = dynamics::ContinuousDynamicsDataTpl<context::Scalar>;
   ALIGATOR_DYNAMIC_TYPEDEFS(context::Scalar);
-  using T::T;
+
+  template <class... Args> PyContinuousDynamics(Args &&...args) : T(args...) {}
 
   void evaluate(const ConstVectorRef &x, const ConstVectorRef &u,
                 const ConstVectorRef &xdot, Data &data) const override {
@@ -38,21 +36,21 @@ struct PyContinuousDynamics final
   shared_ptr<Data> default_createData() const { return T::createData(); }
 };
 
-template <class T = context::ODEAbstract>
-struct PyODEAbstract final : T, PolymorphicWrapper<PyODEAbstract<T>, T> {
+template <class T = dynamics::ODEAbstractTpl<context::Scalar>>
+struct PyODEAbstract : T, bp::wrapper<T> {
   using Scalar = context::Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
-  using Data = context::ODEData;
+  using Data = dynamics::ContinuousDynamicsDataTpl<context::Scalar>;
 
-  using T::T;
+  template <class... Args> PyODEAbstract(Args &&...args) : T(args...) {}
 
-  void forward(const ConstVectorRef &x, const ConstVectorRef &u,
-               Data &data) const override {
+  virtual void forward(const ConstVectorRef &x, const ConstVectorRef &u,
+                       Data &data) const override {
     ALIGATOR_PYTHON_OVERRIDE_PURE(void, "forward", x, u, boost::ref(data));
   }
 
-  void dForward(const ConstVectorRef &x, const ConstVectorRef &u,
-                Data &data) const override {
+  virtual void dForward(const ConstVectorRef &x, const ConstVectorRef &u,
+                        Data &data) const override {
     ALIGATOR_PYTHON_OVERRIDE_PURE(void, "dForward", x, u, boost::ref(data));
   }
 
@@ -65,21 +63,3 @@ struct PyODEAbstract final : T, PolymorphicWrapper<PyODEAbstract<T>, T> {
 
 } // namespace python
 } // namespace aligator
-//
-namespace boost::python::objects {
-
-template <>
-struct value_holder<aligator::python::PyContinuousDynamics<>>
-    : aligator::python::OwningNonOwningHolder<
-          aligator::python::PyContinuousDynamics<>> {
-  using OwningNonOwningHolder::OwningNonOwningHolder;
-};
-
-template <>
-struct value_holder<aligator::python::PyODEAbstract<>>
-    : aligator::python::OwningNonOwningHolder<
-          aligator::python::PyODEAbstract<>> {
-  using OwningNonOwningHolder::OwningNonOwningHolder;
-};
-
-} // namespace boost::python::objects

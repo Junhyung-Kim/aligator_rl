@@ -1,12 +1,12 @@
 /// @file
-/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, INRIA
+/// @copyright Copyright (C) 2022 LAAS-CNRS, INRIA
 #pragma once
 
 #include "aligator/core/dynamics.hpp"
 
-#include "aligator/core/manifold-base.hpp"
+#include <proxsuite-nlp/manifold-base.hpp>
 
-#include <fmt/format.h>
+#include <fmt/core.h>
 
 namespace aligator {
 
@@ -25,12 +25,12 @@ public:
   using BaseData = DynamicsDataTpl<Scalar>;
   using Data = ExplicitDynamicsDataTpl<Scalar>;
   using Manifold = ManifoldAbstractTpl<Scalar>;
-  using ManifoldPtr = xyz::polymorphic<Manifold>;
+  using ManifoldPtr = shared_ptr<Manifold>;
 
-  bool isExplicit() const { return true; }
+  bool is_explicit() const { return true; }
 
   /// Constructor requires providing the next state's manifold.
-  ExplicitDynamicsModelTpl(const ManifoldPtr &space, const int nu);
+  ExplicitDynamicsModelTpl(ManifoldPtr next_state, const int nu);
   virtual ~ExplicitDynamicsModelTpl() = default;
 
   /// @brief Evaluate the forward discrete dynamics.
@@ -53,11 +53,11 @@ public:
 /// @brief    Specific data struct for explicit dynamics
 /// ExplicitDynamicsModelTpl.
 template <typename _Scalar>
-struct ExplicitDynamicsDataTpl : DynamicsDataTpl<_Scalar> {
+struct ExplicitDynamicsDataTpl : StageFunctionDataTpl<_Scalar> {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
-  using Base = DynamicsDataTpl<Scalar>;
+  using Base = StageFunctionDataTpl<Scalar>;
   using Base::Ju_;
   using Base::Jx_;
   using Base::Jy_;
@@ -92,6 +92,8 @@ std::ostream &operator<<(std::ostream &oss,
 }
 
 } // namespace aligator
+
+#include "aligator/core/explicit-dynamics.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "aligator/core/explicit-dynamics.txx"

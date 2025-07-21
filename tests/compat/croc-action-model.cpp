@@ -7,8 +7,8 @@
 
 #include <boost/test/unit_test.hpp>
 
-#include <aligator/fmt-eigen.hpp>
-#include <fmt/format.h>
+#include <proxsuite-nlp/fmt-eigen.hpp>
+#include <fmt/core.h>
 #include <fmt/ostream.h>
 
 BOOST_AUTO_TEST_SUITE(croc_action_model)
@@ -29,7 +29,7 @@ BOOST_AUTO_TEST_CASE(lqr) {
   u0.setRandom();
   fmt::print("1/2 * |u0|²: {}\n", 0.5 * u0.squaredNorm());
 
-  auto lqr_model = std::make_shared<ActionModelLQR>(nx, nu);
+  auto lqr_model = boost::make_shared<ActionModelLQR>(nx, nu);
   lqr_model->set_lx(Eigen::VectorXd::Zero(nx));
   lqr_model->set_lu(Eigen::VectorXd::Zero(nu));
   lqr_model->set_Lxu(Eigen::MatrixXd::Random(nx, nu) * 0.1);

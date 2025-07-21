@@ -1,14 +1,14 @@
 /// @file
-/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, 2022-2025 INRIA
+/// @copyright Copyright (C) 2022-2024 LAAS-CNRS, INRIA
 #pragma once
 
-#include "aligator/solvers/results-base.hpp"
+#include "aligator/core/results-base.hpp"
 #include <fmt/ostream.h>
 
 namespace aligator {
 
 /// @brief    Results holder struct.
-template <typename _Scalar> struct ResultsTpl final : ResultsBaseTpl<_Scalar> {
+template <typename _Scalar> struct ResultsTpl : ResultsBaseTpl<_Scalar> {
   using Scalar = _Scalar;
   ALIGATOR_DYNAMIC_TYPEDEFS(Scalar);
   using Base = ResultsBaseTpl<Scalar>;
@@ -25,11 +25,10 @@ template <typename _Scalar> struct ResultsTpl final : ResultsBaseTpl<_Scalar> {
   /// Proximal/AL iteration count
   std::size_t al_iter = 0;
 
-  explicit ResultsTpl()
-      : Base() {}
+  ResultsTpl() : Base() {}
 
-  ResultsTpl(const ResultsTpl &) = default;
-  ResultsTpl &operator=(const ResultsTpl &) = default;
+  ResultsTpl(const ResultsTpl &) = delete;
+  ResultsTpl &operator=(const ResultsTpl &) = delete;
 
   ResultsTpl(ResultsTpl &&) = default;
   ResultsTpl &operator=(ResultsTpl &&) = default;
@@ -37,30 +36,21 @@ template <typename _Scalar> struct ResultsTpl final : ResultsBaseTpl<_Scalar> {
   /// @brief    Create the results struct from a problem (TrajOptProblemTpl)
   /// instance.
   explicit ResultsTpl(const TrajOptProblemTpl<Scalar> &problem);
-
-  void cycleAppend(const TrajOptProblemTpl<Scalar> &problem,
-                   const ConstVectorRef &x0);
 };
 
 template <typename Scalar>
 std::ostream &operator<<(std::ostream &oss, const ResultsTpl<Scalar> &self) {
-  return oss << fmt::format("{}", self);
+  oss << "Results {";
+  self.printBase(oss);
+  return oss << fmt::format("\n  al_iters:     {:d},", self.al_iter) << "\n}";
 }
 
 } // namespace aligator
 
-template <typename Scalar> struct fmt::formatter<aligator::ResultsTpl<Scalar>> {
-  constexpr auto parse(format_parse_context &ctx) const
-      -> decltype(ctx.begin()) {
-    return ctx.end();
-  }
+template <typename Scalar>
+struct fmt::formatter<aligator::ResultsTpl<Scalar>> : fmt::ostream_formatter {};
 
-  auto format(const aligator::ResultsTpl<Scalar> &self,
-              format_context &ctx) const -> decltype(ctx.out()) {
-    auto s = self.printBase();
-    return fmt::format_to(ctx.out(), "Results {{{}\n}}", s);
-  }
-};
+#include "./results.hxx"
 
 #ifdef ALIGATOR_ENABLE_TEMPLATE_INSTANTIATION
 #include "./results.txx"

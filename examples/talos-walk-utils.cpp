@@ -1,6 +1,6 @@
 #include "talos-walk-utils.hpp"
 
-#include "aligator/modelling/spaces/multibody.hpp"
+#include <proxsuite-nlp/modelling/spaces/multibody.hpp>
 
 #include <pinocchio/context.hpp>
 #include <pinocchio/parsers/urdf.hpp>
@@ -63,26 +63,33 @@ void foot_traj(Eigen::Vector3d &translation_init, const int &t_ss,
   translation_init[2] += swing_apex * sin(ts * M_PI / (double)t_ss);
 }
 
-IntegratorSemiImplEuler
-create_dynamics(MultibodyPhaseSpace &stage_space, Support &support,
-                MatrixXd &actuation_matrix, ProximalSettings &proximal_settings,
+std::shared_ptr<IntegratorSemiImplEuler>
+create_dynamics(std::shared_ptr<MultibodyPhaseSpace> &stage_space,
+                Support &support, MatrixXd &actuation_matrix,
+                ProximalSettings &proximal_settings,
                 std::vector<pin::RigidConstraintModel> &constraint_models) {
+  std::shared_ptr<ODEAbstract> ode;
   pinocchio::context::RigidConstraintModelVector cms;
   switch (support) {
   case LEFT:
     cms.push_back(constraint_models[0]);
+    ode = std::make_shared<MultibodyConstraintFwdDynamics>(
+        stage_space, actuation_matrix, cms, proximal_settings);
     break;
   case RIGHT:
     cms.push_back(constraint_models[1]);
+    ode = std::make_shared<MultibodyConstraintFwdDynamics>(
+        stage_space, actuation_matrix, cms, proximal_settings);
     break;
   case DOUBLE:
     cms.push_back(constraint_models[0]);
     cms.push_back(constraint_models[1]);
+    ode = std::make_shared<MultibodyConstraintFwdDynamics>(
+        stage_space, actuation_matrix, cms, proximal_settings);
     break;
   }
-  MultibodyConstraintFwdDynamics ode = MultibodyConstraintFwdDynamics(
-      stage_space, actuation_matrix, cms, proximal_settings);
-  IntegratorSemiImplEuler dyn_model = IntegratorSemiImplEuler(ode, 0.01);
+  std::shared_ptr<IntegratorSemiImplEuler> dyn_model =
+      std::make_shared<IntegratorSemiImplEuler>(ode, 0.01);
   return dyn_model;
 }
 
@@ -176,19 +183,22 @@ TrajOptProblem defineLocomotionProblem(const std::size_t T_ss,
   contact_phases.insert(contact_phases.end(), double_phase.begin(),
                         double_phase.end());
 
-  std::vector<xyz::polymorphic<StageModel>> stage_models;
+  std::vector<std::shared_ptr<StageModel>> stage_models;
   size_t ts = 0;
   for (std::vector<Support>::iterator phase = contact_phases.begin();
        phase < contact_phases.end(); phase++) {
     Support ph = *phase;
     ts += 1;
 
-    auto stage_space = MultibodyPhaseSpace(rmodel);
+    const auto cmodel = std::make_shared<Model>(rmodel);
+    auto stage_space = std::make_shared<MultibodyPhaseSpace>(*cmodel);
 
-    auto rcost = CostStack(stage_space, nu);
+    auto rcost = std::make_shared<CostStack>(stage_space, nu);
 
-    rcost.addCost("quad_state", QuadraticStateCost(stage_space, nu, x0, w_x));
-    rcost.addCost("quad_control", QuadraticControlCost(stage_space, u0, w_u));
+    rcost->addCost(
+        std::make_shared<QuadraticStateCost>(stage_space, nu, x0, w_x));
+    rcost->addCost(
+        std::make_shared<QuadraticControlCost>(stage_space, u0, w_u));
     pin::SE3 LF_placement = rdata.oMf[foot_frame_ids[0]];
     pin::SE3 RF_placement = rdata.oMf[foot_frame_ids[1]];
     std::shared_ptr<FramePlacementResidual> frame_fn_RF;
@@ -197,28 +207,29 @@ TrajOptProblem defineLocomotionProblem(const std::size_t T_ss,
     case LEFT:
       foot_traj(RF_placement.translation(), T_ss, ts);
       frame_fn_RF = std::make_shared<FramePlacementResidual>(
-          stage_space.ndx(), nu, rmodel, RF_placement, foot_frame_ids[1]);
-      rcost.addCost("frame_fn_RF",
-                    QuadraticResidualCost(stage_space, *frame_fn_RF, w_LFRF));
+          stage_space->ndx(), nu, cmodel, RF_placement, foot_frame_ids[1]);
+      rcost->addCost(std::make_shared<QuadraticResidualCost>(
+          stage_space, frame_fn_RF, w_LFRF));
       break;
     case RIGHT:
       foot_traj(LF_placement.translation(), T_ss, ts);
       frame_fn_LF = std::make_shared<FramePlacementResidual>(
-          stage_space.ndx(), nu, rmodel, LF_placement, foot_frame_ids[0]);
-      rcost.addCost("frame_fn_LF",
-                    QuadraticResidualCost(stage_space, *frame_fn_LF, w_LFRF));
+          stage_space->ndx(), nu, cmodel, LF_placement, foot_frame_ids[0]);
+      rcost->addCost(std::make_shared<QuadraticResidualCost>(
+          stage_space, frame_fn_LF, w_LFRF));
       break;
     case DOUBLE:
       ts = 0;
       break;
     }
-    stage_models.push_back(
-        StageModel(rcost, create_dynamics(stage_space, ph, actuation_matrix,
-                                          prox_settings, constraint_models)));
+    stage_models.push_back(std::make_shared<StageModel>(
+        rcost, create_dynamics(stage_space, ph, actuation_matrix, prox_settings,
+                               constraint_models)));
   }
-  auto ter_space = MultibodyPhaseSpace(rmodel);
-  auto term_cost = CostStack(ter_space, nu);
-  term_cost.addCost("quad_state", QuadraticStateCost(ter_space, nu, x0, w_x));
+  auto ter_space = std::make_shared<MultibodyPhaseSpace>(rmodel);
+  auto term_cost = std::make_shared<CostStack>(ter_space, nu);
+  term_cost->addCost(
+      std::make_shared<QuadraticStateCost>(ter_space, nu, x0, w_x));
 
   return TrajOptProblem(x0, stage_models, term_cost);
 }

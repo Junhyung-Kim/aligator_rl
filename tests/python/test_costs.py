@@ -1,19 +1,9 @@
-from aligator import manifolds, QuadraticCost, CostStack
+from aligator import QuadraticCost, CostStack
+from aligator import manifolds
 import aligator
 import numpy as np
-import eigenpy
 
 import pytest
-from utils import cost_finite_grad
-
-FD_EPS = 1e-7
-ATOL = 2 * FD_EPS**0.5
-
-
-def sample_gauss(space):
-    x0 = space.neutral()
-    d = np.random.randn(space.ndx) * 0.1
-    return space.integrate(x0, d)
 
 
 def test_cost_stack():
@@ -44,20 +34,11 @@ def test_cost_stack():
         cost_stack.computeHessians(x0, u0, data2)
 
         assert data1.value == data2.value
-        assert np.allclose(data1.grad, data2.grad, atol=ATOL)
-        assert np.allclose(data1.hess, data2.hess, atol=ATOL)
+        assert np.allclose(data1.grad, data2.grad)
+        assert np.allclose(data1.hess, data2.hess)
 
-        assert np.allclose(data1.Lxx, Q, atol=ATOL)
-        assert np.allclose(data1.Luu, R, atol=ATOL)
-
-    rcost_ref = cost_stack.getComponent(0)
-    assert isinstance(rcost_ref, QuadraticCost)
-
-    if eigenpy.__version__ >= "3.9.1":
-        # test other API for cost,
-        # building from dict
-        cost_stack = CostStack(space, nu, {"quad": (rcost, 1.0)})
-        assert cost_stack.size() == 1
+        assert np.allclose(data1.Lxx, Q)
+        assert np.allclose(data1.Luu, R)
 
 
 def test_composite_cost():
@@ -67,14 +48,17 @@ def test_composite_cost():
 
     nu = space.ndx
     u0 = np.ones(nu)
-    target = x0 - 0.1 * np.ones(ndx)
+    target = space.rand()
     fun = aligator.StateErrorResidual(space, nu, target)
     # for debug
     fd = fun.createData()
-    fun.evaluate(x0, u0, fd)
-    fun.computeJacobians(x0, u0, fd)
+    fun.evaluate(x0, u0, x0, fd)
+    fun.computeJacobians(x0, u0, x0, fd)
 
     # costs
+
+    np.random.seed(40)
+
     weights = np.random.randn(4, fun.nr)
     weights = weights.T @ weights
     cost = aligator.QuadraticResidualCost(space, fun, weights)
@@ -102,7 +86,7 @@ def test_composite_cost():
 
     weights = np.ones(fun.nr)
     log_cost = aligator.LogResidualCost(space, fun, weights)
-    data: aligator.CompositeCostData = log_cost.createData()
+    data = log_cost.createData()
     print(data)
     assert isinstance(data, aligator.CompositeCostData)
 
@@ -111,55 +95,8 @@ def test_composite_cost():
     log_cost.computeHessians(x0, u0, data)
     print("LogCost:")
     print(data.value)
-    print(data.residual_data.value)
     print(data.grad)
     print(data.hess)
-    for i in range(100):
-        x0 = sample_gauss(space)
-        cost.evaluate(x0, u0, data)
-        cost.computeGradients(x0, u0, data)
-        fgrad = cost_finite_grad(cost, space, x0, u0, FD_EPS)
-        assert np.allclose(fgrad, data.grad, atol=ATOL)
-    print("----")
-
-
-def test_log_barrier():
-    space = manifolds.VectorSpace(3)
-    x0 = space.rand()
-
-    nu = space.ndx
-    u0 = np.ones(nu)
-    fun = aligator.StateErrorResidual(space, nu, target=space.rand())
-    # for debug
-    fd = fun.createData()
-    fun.evaluate(x0, u0, fd)
-    fun.computeJacobians(x0, u0, fd)
-
-    # costs
-    weights = np.ones(fun.nr)
-    thresh = np.random.rand()
-    cost = aligator.RelaxedLogBarrierCost(space, fun, weights, thresh)
-    assert np.array_equal(weights, cost.weights)
-
-    data = cost.createData()
-    print("Composite data:", data)
-    assert isinstance(data, aligator.CompositeCostData)
-
-    cost.evaluate(x0, u0, data)
-    cost.computeGradients(x0, u0, data)
-    cost.computeHessians(x0, u0, data)
-
-    print("RelaxedLogCost:")
-    print(data.value)
-    print(data.grad)
-    print(data.hess)
-
-    for i in range(100):
-        x0 = sample_gauss(space)
-        cost.evaluate(x0, u0, data)
-        cost.computeGradients(x0, u0, data)
-        fgrad = cost_finite_grad(cost, space, x0, u0, FD_EPS)
-        assert np.allclose(fgrad, data.grad, atol=ATOL)
     print("----")
 
 
@@ -208,15 +145,11 @@ def test_stack_error():
     rcost = QuadraticCost(Q, R)
     cost_stack.addCost(rcost)  # optional
 
-    if eigenpy.__version__ >= "3.9.1":
-        print(cost_stack.components.todict())
-
     rc2 = QuadraticCost(np.eye(3), np.eye(nu))
     rc3 = QuadraticCost(np.eye(nx), np.eye(nu * 2))
 
-    if eigenpy.__version__ >= "3.9.1":
-        cost_data = cost_stack.createData()
-        print(cost_data.sub_cost_data.todict())
+    cost_data = cost_stack.createData()
+    print(cost_data.sub_cost_data.tolist())
 
     with pytest.raises(Exception) as e_info:
         cost_stack.addCost(rc2)
@@ -282,9 +215,5 @@ def test_direct_sum():
 
 if __name__ == "__main__":
     import sys
-
-    SEED = 40
-    np.random.seed(SEED)
-    aligator.seed(SEED)
 
     sys.exit(pytest.main(sys.argv))

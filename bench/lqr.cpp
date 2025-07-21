@@ -39,11 +39,11 @@ TrajOptProblem define_problem(const std::size_t nsteps, const int dim = 56,
 
   using Dynamics = dynamics::LinearDiscreteDynamicsTpl<T>;
   using QuadCost = QuadraticCostTpl<T>;
-  auto dynptr = Dynamics(A, B, c_);
-  auto space = dynptr.space_next_;
+  auto dynptr = std::make_shared<Dynamics>(A, B, c_);
+  auto space = dynptr->space_next_;
 
-  auto rcost = QuadCost(w_x, w_u);
-  auto stage = StageModel(rcost, dynptr);
+  auto rcost = std::make_shared<QuadCost>(w_x, w_u);
+  auto stage = std::make_shared<StageModel>(rcost, dynptr);
   auto term_cost = rcost;
 
   VectorXd x0(dim);
@@ -70,7 +70,7 @@ static void BM_lqr_prox(benchmark::State &state) {
   SETUP_PROBLEM_VARS(nsteps);
   const T mu_init = 1e-10;
   const auto num_threads = static_cast<std::size_t>(state.range(1));
-  SolverProxDDPTpl<T> solver(TOL, mu_init, max_iters, verbose);
+  SolverProxDDPTpl<T> solver(TOL, mu_init, 0., max_iters, verbose);
   solver.linear_solver_choice = lqsc;
   solver.rollout_type_ = RolloutType::LINEAR;
   solver.force_initial_condition_ = false;
